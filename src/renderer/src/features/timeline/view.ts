@@ -3,7 +3,6 @@ import type { Filmstrip, Peaks } from '@shared/ipc'
 
 export const HEADER_WIDTH = 176
 export const RULER_HEIGHT = 26
-export const SNAP_PIXELS = 8
 
 interface TimelineView {
   scrollLeft: number

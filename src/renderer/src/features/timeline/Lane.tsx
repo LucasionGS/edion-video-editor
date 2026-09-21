@@ -2,6 +2,7 @@ import { clipEnd } from '@core/index'
 import type { Track } from '@core/index'
 import { useEditor } from '@/store/editor'
 import { ClipView } from './ClipView'
+import { KeyframeMarkers } from './KeyframeMarkers'
 import { TransitionBadge } from './TransitionBadge'
 import { useTimelineView } from './view'
 
@@ -34,6 +35,11 @@ export function Lane({ track, width }: { track: Track; width: number }) {
             locked={track.locked}
             missing={'mediaId' in clip && missingMedia.includes(clip.mediaId)}
           />
+        )
+      )}
+      {track.clips.map((clip) =>
+        clipEnd(clip) < from || clip.start > to ? null : (
+          <KeyframeMarkers key={clip.id} clip={clip} zoom={zoom} locked={track.locked} />
         )
       )}
       {track.transitions.map((t) => (

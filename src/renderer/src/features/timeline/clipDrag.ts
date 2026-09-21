@@ -6,6 +6,7 @@ import {
   nearestFreeStart,
   snap,
   snapPoints,
+  snapThreshold,
   splitClip,
   trimClip
 } from '@core/index'
@@ -19,17 +20,23 @@ import {
   useEditor
 } from '@/store/editor'
 import { startDrag } from './drag'
-import { SNAP_PIXELS, useTimelineView } from './view'
+import { useTimelineView } from './view'
 
 const state = useEditor.getState
 
 function snapDelta(edges: number[], ignore: ReadonlySet<Id>, bypass: boolean): number {
-  const { project, playhead, snapping, zoom } = state()
+  const { project, playhead, snapping, snap: settings, zoom } = state()
   if (!snapping || bypass) {
     useTimelineView.setState({ snapGuide: null })
     return 0
   }
-  const hit = snap(edges, snapPoints(project, playhead, ignore), SNAP_PIXELS / zoom)
+  const { fps } = project.settings
+  const hit = snap(
+    edges,
+    snapPoints(project, playhead, ignore, settings),
+    snapThreshold(settings, zoom, fps),
+    settings.gridSeconds * fps
+  )
   useTimelineView.setState({ snapGuide: hit?.point ?? null })
   return hit?.delta ?? 0
 }

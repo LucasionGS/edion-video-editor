@@ -4,7 +4,6 @@ import type { Clip } from '@core/index'
 import { clipMenuItems, selectForMenu } from '@/store/clipMenu'
 import { useEditor } from '@/store/editor'
 import { openContextMenu } from '@/ui/ContextMenu'
-import { KeyframeMarkers } from './KeyframeMarkers'
 import { beginClipMove, beginClipTrim, razorAt } from './clipDrag'
 import { useTimelineView } from './view'
 
@@ -77,7 +76,6 @@ export const ClipView = memo(function ClipView({ clip, zoom, height, selected, l
           </span>
         )}
       </div>
-      {selected && !locked && <KeyframeMarkers clip={clip} zoom={zoom} />}
       {!locked && width > 14 && (
         <>
           <div

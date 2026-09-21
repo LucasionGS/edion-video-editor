@@ -9,6 +9,7 @@ const DEFAULTS: AppSettings = {
   autosaveSeconds: 30,
   proxiesEnabled: true,
   shortcuts: {},
+  snapping: null,
   recents: []
 }
 const MAX_RECENTS = 12

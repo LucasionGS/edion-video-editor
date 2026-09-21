@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import {
   Captions,
   Film,
-  Magnet,
   MousePointer2,
   Music,
   Redo2,
@@ -26,6 +25,7 @@ import { Lane } from './Lane'
 import { beginMarquee } from './marquee'
 import { LaneCanvas } from './LaneCanvas'
 import { Ruler } from './Ruler'
+import { SnapMenu } from './SnapMenu'
 import { TrackHeader } from './TrackHeader'
 import { HEADER_WIDTH, RULER_HEIGHT, useTimelineView } from './view'
 
@@ -209,7 +209,6 @@ function Guides() {
 
 function Toolbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
   const tool = useEditor((s) => s.tool)
-  const snapping = useEditor((s) => s.snapping)
   const ripple = useEditor((s) => s.ripple)
   const zoom = useEditor((s) => s.zoom)
   const canUndo = useEditor((s) => s.canUndo)
@@ -262,13 +261,7 @@ function Toolbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | nu
         <Trash2 size={15} />
       </IconButton>
       {divider}
-      <IconButton
-        label="Snapping (N)"
-        active={snapping}
-        onClick={() => useEditor.setState({ snapping: !snapping })}
-      >
-        <Magnet size={15} />
-      </IconButton>
+      <SnapMenu />
       <button
         type="button"
         title="Ripple: deleting a clip closes the gap"

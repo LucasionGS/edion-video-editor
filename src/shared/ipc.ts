@@ -198,6 +198,8 @@ export interface AppSettings {
   proxiesEnabled: boolean
   /** Custom key bindings: command id → key combos. Commands not listed use their defaults. */
   shortcuts: Record<string, string[]>
+  /** Timeline snapping preferences (a `SnapSettings` from the core); null until changed. */
+  snapping: Record<string, number | boolean> | null
   recents: RecentProject[]
 }
 

@@ -79,24 +79,48 @@ function KeyframeControls<T extends AnimValue>({
           <ChevronRight size={13} />
         </button>
       )}
-      {current && (
-        <select
-          aria-label={`${label} easing`}
-          title="How the value moves towards the next keyframe"
-          value={typeof current.easing === 'string' ? current.easing : 'easeInOut'}
-          onChange={(e) =>
-            change('Change easing', (a) => void (keyframeAt(a, frame)!.easing = e.target.value as Easing))
-          }
-          className="ml-1 h-5 w-[74px] rounded border border-line bg-raised text-[10px] text-muted outline-none"
-        >
-          {EASINGS.map((e) => (
-            <option key={e.value} value={e.value}>
-              {e.label}
-            </option>
-          ))}
-        </select>
-      )}
     </span>
+  )
+}
+
+/** Easing of the keyframe under the playhead, on its own line so the value fields keep their width. */
+function EasingRow<T extends AnimValue>({
+  clip,
+  get,
+  label
+}: {
+  clip: Clip
+  get: AnimGetter<T>
+  label: string
+}) {
+  useEditor((s) => s.playhead)
+  const anim = get(clip)
+  const frame = localFrame(clip)
+  const current = anim && keyframeAt(anim, frame)
+  if (!current) return null
+  return (
+    <Row label="">
+      <span className="shrink-0 text-2xs text-faint">Easing</span>
+      <select
+        aria-label={`${label} easing`}
+        title="How the value moves towards the next keyframe"
+        value={typeof current.easing === 'string' ? current.easing : 'easeInOut'}
+        onChange={(e) =>
+          editClips([clip.id], 'Change easing', (draft) => {
+            const target = get(draft)
+            const keyframe = target && keyframeAt(target, frame)
+            if (keyframe) keyframe.easing = e.target.value as Easing
+          })
+        }
+        className="h-6 min-w-0 flex-1 rounded border border-line bg-raised px-1 text-2xs text-muted outline-none"
+      >
+        {EASINGS.map((e) => (
+          <option key={e.value} value={e.value}>
+            {e.label}
+          </option>
+        ))}
+      </select>
+    </Row>
   )
 }
 
@@ -148,24 +172,27 @@ export function AnimNumberRow({
   if (!anim) return null
   const k = spec.display ?? 1
   return (
-    <Row label={label} trailing={<KeyframeControls clip={clip} get={get} label={label} />}>
-      <NumberInput
-        label={label}
-        value={evaluate(anim, localFrame(clip)) * k}
-        min={spec.min}
-        max={spec.max}
-        step={spec.step ?? 1}
-        precision={spec.precision ?? 1}
-        suffix={spec.suffix}
-        {...scrub}
-        onChange={(v) =>
-          editClips([clip.id], `Change ${label.toLowerCase()}`, (draft) => {
-            const target = get(draft)
-            if (target) setValueAt(target, localFrame(clip), v / k)
-          })
-        }
-      />
-    </Row>
+    <>
+      <Row label={label} trailing={<KeyframeControls clip={clip} get={get} label={label} />}>
+        <NumberInput
+          label={label}
+          value={evaluate(anim, localFrame(clip)) * k}
+          min={spec.min}
+          max={spec.max}
+          step={spec.step ?? 1}
+          precision={spec.precision ?? 1}
+          suffix={spec.suffix}
+          {...scrub}
+          onChange={(v) =>
+            editClips([clip.id], `Change ${label.toLowerCase()}`, (draft) => {
+              const target = get(draft)
+              if (target) setValueAt(target, localFrame(clip), v / k)
+            })
+          }
+        />
+      </Row>
+      <EasingRow clip={clip} get={get} label={label} />
+    </>
   )
 }
 
@@ -203,22 +230,25 @@ export function AnimVec2Row({
       setValueAt(target, localFrame(clip), next)
     })
   return (
-    <Row label={label} trailing={<KeyframeControls clip={clip} get={get} label={label} />}>
-      {([0, 1] as const).map((i) => (
-        <NumberInput
-          key={i}
-          label={`${label} ${labels[i]}`}
-          value={value[i] * k}
-          min={spec.min}
-          max={spec.max}
-          step={spec.step ?? 1}
-          precision={spec.precision ?? 1}
-          suffix={spec.suffix}
-          {...scrub}
-          onChange={(v) => set(i, v)}
-        />
-      ))}
-    </Row>
+    <>
+      <Row label={label} trailing={<KeyframeControls clip={clip} get={get} label={label} />}>
+        {([0, 1] as const).map((i) => (
+          <NumberInput
+            key={i}
+            label={`${label} ${labels[i]}`}
+            value={value[i] * k}
+            min={spec.min}
+            max={spec.max}
+            step={spec.step ?? 1}
+            precision={spec.precision ?? 1}
+            suffix={spec.suffix}
+            {...scrub}
+            onChange={(v) => set(i, v)}
+          />
+        ))}
+      </Row>
+      <EasingRow clip={clip} get={get} label={label} />
+    </>
   )
 }
 

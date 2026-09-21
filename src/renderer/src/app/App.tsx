@@ -7,7 +7,7 @@ import { Welcome } from '@/features/welcome/Welcome'
 import { Library } from '@/features/library/Library'
 import { Timeline } from '@/features/timeline/Timeline'
 import { Viewer } from '@/features/viewer/Viewer'
-import { isDirty, useEditor } from '@/store/editor'
+import { isDirty, loadSnapSettings, useEditor } from '@/store/editor'
 import { wireExports } from '@/store/exports'
 import { autosave, confirmDiscard, openProject } from '@/store/projectActions'
 import { activeJob, useExports } from '@/store/exports'
@@ -26,6 +26,7 @@ export function App() {
   useWindowTitle()
   useAutosave()
   useEffect(wireExports, [])
+  useEffect(() => void loadSnapSettings(), [])
   useEffect(() => {
     void window.edion.project.initialPath().then((path) => {
       if (path) void openProject(path)

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Draft } from 'immer'
-import { createProject, History } from '@core/index'
-import type { Clip, Id, Project } from '@core/index'
+import { createProject, DEFAULT_SNAP_SETTINGS, History } from '@core/index'
+import type { Clip, Id, Project, SnapSettings } from '@core/index'
 
 export type Tool = 'select' | 'razor'
 
@@ -22,6 +22,7 @@ export interface EditorState {
   playing: boolean
   tool: Tool
   snapping: boolean
+  snap: SnapSettings
   ripple: boolean
   /** Timeline zoom in pixels per frame. */
   zoom: number
@@ -44,6 +45,7 @@ export const useEditor = create<EditorState>(() => ({
   playing: false,
   tool: 'select',
   snapping: true,
+  snap: DEFAULT_SNAP_SETTINGS,
   ripple: false,
   zoom: 2,
   clipboard: [],
@@ -125,3 +127,15 @@ export const MAX_ZOOM = 40
 export const setZoom = (zoom: number): void => set({ zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom)) })
 
 export const selectTransition = (id: Id | null): void => set({ selectedTransition: id, selection: [] })
+
+/** Changes snapping preferences and remembers them across sessions. */
+export function setSnapSettings(patch: Partial<SnapSettings>): void {
+  const snap = { ...get().snap, ...patch }
+  set({ snap })
+  void window.edion.settings.update({ snapping: { ...snap } })
+}
+
+export async function loadSnapSettings(): Promise<void> {
+  const saved = (await window.edion.settings.get()).snapping
+  if (saved) set({ snap: { ...DEFAULT_SNAP_SETTINGS, ...(saved as Partial<SnapSettings>) } })
+}
