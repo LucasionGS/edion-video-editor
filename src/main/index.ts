@@ -4,7 +4,8 @@ import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
 import { IPC, SETTINGS_IPC, type AppSettings } from '@shared/ipc'
 import { resolveFfmpeg } from './ffmpeg/paths'
 import { probe } from './ffmpeg/probe'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { cancelAllExports, onExportUpdate, registerExportIpc, startExport } from './export'
 import { allowFile, registerFileProtocolScheme, registerLibraryIpc } from './library'
 import { registerProjectIpc } from './project'
@@ -168,6 +169,22 @@ function registerIpc(): void {
   registerExportIpc()
   registerProjectIpc()
   registerLibraryIpc()
+}
+
+// Automated runs get a throwaway profile, so they can never touch the user's settings, recents, autosaves or cache.
+const isAutomatedRun = Boolean(process.env['EDION_SCREENSHOT'] || process.env['EDION_HEADLESS_EXPORT'])
+if (isAutomatedRun) {
+  // Chromium's helper processes can outlive us and re-create files, so exit-time cleanup is best effort;
+  // sweep profiles left behind by earlier runs (old enough not to belong to a run in progress).
+  for (const name of readdirSync(tmpdir())) {
+    if (!name.startsWith('edion-test-profile-')) continue
+    const stale = join(tmpdir(), name)
+    if (Date.now() - statSync(stale).mtimeMs > 10 * 60_000) rmSync(stale, { recursive: true, force: true })
+  }
+  const profile = mkdtempSync(join(tmpdir(), 'edion-test-profile-'))
+  app.setPath('userData', profile)
+  // `app.exit()` skips Electron's quit events, so clean up on the process itself.
+  process.on('exit', () => rmSync(profile, { recursive: true, force: true }))
 }
 
 // Automated runs must stay silent as well as invisible.
