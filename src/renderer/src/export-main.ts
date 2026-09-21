@@ -1,72 +1,118 @@
-import { VideoSampleSink } from 'mediabunny'
-import { FrameRenderer } from './engine/compositor/FrameRenderer'
-import { openMediaInput } from './engine/decode/mediaInput'
+import { fpsToRational, parseProject, projectDuration } from '@core/index'
+import type { ResolvedEncoder } from '@shared/ipc'
+import { mixdown } from './engine/export/mixdown'
+import { SceneRenderer } from './engine/SceneRenderer'
 
 /**
- * Milestone-1 export runner: decode → WebGL → raw RGBA → FFmpeg, at a constant frame rate.
- * Runs in the hidden export window so the editor stays responsive.
+ * The export worker. Runs in a hidden window so the editor stays responsive:
+ * audio mixdown → (scene → compositor → raw RGBA → FFmpeg) per frame, with the same
+ * SceneRenderer the preview uses.
  */
+const api = window.edionExport
+let aborted = false
+
+class Aborted extends Error {}
+
 async function run(): Promise<void> {
-  const api = window.edionExport
-  let aborted = false
   api.onAbort(() => (aborted = true))
-
-  const job = await api.getJob()
-  const input = await openMediaInput(api.media, job.inputPath)
-  const track = await input.getPrimaryVideoTrack()
-  if (!track) throw new Error('The file has no video track')
-  if (!(await track.canDecode())) throw new Error(`Cannot decode codec "${track.codec}"`)
-
-  const stats = await track.computePacketStats(120)
-  const fps = Math.min(120, Math.max(1, Math.round(stats.averagePacketRate * 1000) / 1000))
-  const duration = await track.computeDuration()
-  const start = await track.getFirstTimestamp()
-  const totalFrames = Math.max(1, Math.round((duration - start) * fps))
+  const { request, encoders } = await api.getJob()
+  const project = parseProject(request.projectJson)
+  const { settings } = request
+  const from = Math.max(0, settings.range?.in ?? 0)
+  const to = Math.min(projectDuration(project), settings.range?.out ?? Infinity)
+  const totalFrames = to - from
+  if (totalFrames <= 0) throw new Error('There is nothing to export in the selected range.')
 
   // yuv420p needs even dimensions.
-  const width = track.displayWidth & ~1
-  const height = track.displayHeight & ~1
-  const renderer = new FrameRenderer(new OffscreenCanvas(width, height), true)
+  const width = settings.width & ~1
+  const height = settings.height & ~1
+  const renderer = new SceneRenderer(new OffscreenCanvas(width, height), api, true)
+  renderer.compositor.setSize(project.settings.width, project.settings.height, width / project.settings.width)
+  // setSize rounds from the project size; force the exact encoder dimensions.
+  renderer.compositor.canvas.width = width
+  renderer.compositor.canvas.height = height
   const pixels = new Uint8Array(width * height * 4)
 
-  await api.startEncoder({ width, height, fps, outputPath: job.outputPath, audioPath: job.inputPath })
+  api.progress({ state: 'running', phase: 'audio', frame: 0, totalFrames })
+  const audioPath = await api.beginAudio()
+  const hasAudio = await mixdown(
+    project,
+    renderer.pool,
+    from,
+    to,
+    (chunk) => api.appendAudio(chunk),
+    () => {},
+    () => aborted
+  )
+  await api.endAudio()
+  if (aborted) throw new Aborted()
 
-  const sink = new VideoSampleSink(track)
-  const timestamps = Array.from({ length: totalFrames }, (_, n) => start + n / fps)
-  let frame = 0
-  let lastReport = 0
-  for await (const sample of sink.samplesAtTimestamps(timestamps)) {
-    if (aborted) {
-      sample?.close()
-      return
+  const encode = async (encoder: ResolvedEncoder): Promise<void> => {
+    await api.startEncoder({
+      width,
+      height,
+      fps: fpsToRational(project.settings.fps),
+      outputPath: request.outputPath,
+      encoder,
+      quality: settings.quality,
+      audio: hasAudio
+        ? { path: audioPath, sampleRate: project.settings.sampleRate, bitrateKbps: settings.audioBitrateKbps }
+        : null
+    })
+    let lastReport = 0
+    for (let n = 0; n < totalFrames; n++) {
+      if (aborted) throw new Aborted()
+      await renderer.drawExact(project, from + n)
+      renderer.compositor.readPixels(pixels)
+      await api.writeFrame(pixels)
+      const now = performance.now()
+      if (now - lastReport > 150) {
+        lastReport = now
+        api.progress({ state: 'running', phase: 'video', frame: n + 1, totalFrames, encoder: encoder.label })
+      }
     }
-    if (sample) {
-      const videoFrame = sample.toVideoFrame()
-      renderer.draw(videoFrame, videoFrame.displayWidth, videoFrame.displayHeight)
-      videoFrame.close()
-      sample.close()
-      renderer.readPixels(pixels)
-    }
-    // A missing sample repeats the previous frame.
-    await api.writeFrame(pixels)
-    frame++
-    const now = performance.now()
-    if (now - lastReport > 100) {
-      lastReport = now
-      api.progress({ frame, totalFrames, state: 'running' })
+    api.progress({
+      state: 'running',
+      phase: 'finishing',
+      frame: totalFrames,
+      totalFrames,
+      encoder: encoder.label
+    })
+    await api.finish()
+  }
+
+  let failure: unknown = null
+  for (const encoder of encoders) {
+    try {
+      await encode(encoder)
+      failure = null
+      break
+    } catch (error) {
+      await api.discardEncoder()
+      if (error instanceof Aborted) throw error
+      // Hardware encoders fail in creative ways (driver limits, busy GPU); fall back to the next one.
+      console.warn(`[export] ${encoder.name} failed`, error)
+      failure = error
     }
   }
-  if (aborted) return
-  await api.finish()
-  api.progress({ frame, totalFrames, state: 'done' })
+  if (failure) throw failure
+  api.progress({ state: 'done', phase: 'finishing', frame: totalFrames, totalFrames })
 }
 
-run().catch((error: unknown) => {
-  console.error(error)
-  window.edionExport.progress({
-    frame: 0,
-    totalFrames: 0,
-    state: 'error',
-    message: error instanceof Error ? error.message : String(error)
+run()
+  .catch(async (error: unknown) => {
+    await api.discardEncoder().catch(() => {})
+    if (error instanceof Aborted || aborted) {
+      api.progress({ state: 'cancelled', phase: 'video', frame: 0, totalFrames: 0 })
+    } else {
+      console.error(error)
+      api.progress({
+        state: 'error',
+        phase: 'video',
+        frame: 0,
+        totalFrames: 0,
+        message: error instanceof Error ? error.message : String(error)
+      })
+    }
   })
-})
+  .finally(() => api.cleanup())

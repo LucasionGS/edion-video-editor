@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  applyEasing, cubicBezier, evaluate, moveKeyframe, removeKeyframe, setValueAt, splitAnimatable, upsertKeyframe
+  applyEasing,
+  cubicBezier,
+  evaluate,
+  moveKeyframe,
+  removeKeyframe,
+  setValueAt,
+  splitAnimatable,
+  upsertKeyframe
 } from '@core/index'
 import type { Animatable, Vec2 } from '@core/index'
 
@@ -56,7 +63,10 @@ describe('animatable', () => {
     expect(a).toEqual({ value: 2 })
     upsertKeyframe(a, 0)
     setValueAt(a, 5, 9)
-    expect(a.keyframes?.map((k) => [k.frame, k.value])).toEqual([[0, 2], [5, 9]])
+    expect(a.keyframes?.map((k) => [k.frame, k.value])).toEqual([
+      [0, 2],
+      [5, 9]
+    ])
   })
   it('keeps the visible value when the last keyframe goes', () => {
     const a: Animatable<number> = { value: 0, keyframes: [{ frame: 3, value: 42, easing: 'linear' }] }

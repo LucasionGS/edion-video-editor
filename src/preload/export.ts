@@ -1,61 +1,97 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import { rm } from 'node:fs/promises'
+import { createWriteStream, type WriteStream } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { contextBridge, ipcRenderer } from 'electron'
-import { EXPORT_IPC, type EdionExportApi, type ExportJob } from '@shared/ipc'
+import { EXPORT_IPC, LIBRARY_IPC, type EdionExportApi } from '@shared/ipc'
 import { mediaApi } from './media'
 
 const jobId = decodeURIComponent(
   (globalThis as unknown as { location: { hash: string } }).location.hash.slice(1)
 )
-const jobInfo: Promise<{ job: ExportJob; ffmpegPath: string }> = ipcRenderer.invoke(EXPORT_IPC.getJob, jobId)
 
 let encoder: ChildProcess | null = null
 let encoderExit: Promise<number | null> | null = null
 let outputPath: string | null = null
 let stderrTail = ''
+let tempDir: string | null = null
+let audioStream: WriteStream | null = null
 
-async function killEncoder(): Promise<void> {
+async function discardEncoder(): Promise<void> {
   if (encoder && encoder.exitCode === null) {
     encoder.kill('SIGKILL')
     await encoderExit?.catch(() => null)
   }
+  encoder = null
   if (outputPath) await rm(outputPath, { force: true })
+}
+
+async function cleanup(): Promise<void> {
+  audioStream?.destroy()
+  if (tempDir) await rm(tempDir, { recursive: true, force: true })
+  tempDir = null
 }
 
 const api: EdionExportApi = {
   media: mediaApi,
-  getJob: async () => (await jobInfo).job,
+  library: { fileUrl: (path) => ipcRenderer.invoke(LIBRARY_IPC.fileUrl, path) },
+  getJob: () => ipcRenderer.invoke(EXPORT_IPC.getJob, jobId),
 
-  async startEncoder(opts) {
-    const { ffmpegPath } = await jobInfo
-    outputPath = opts.outputPath
+  async beginAudio() {
+    tempDir ??= await mkdtemp(join(tmpdir(), 'edion-export-'))
+    const path = join(tempDir, 'mix.f32')
+    audioStream = createWriteStream(path)
+    return path
+  },
+  async appendAudio(interleaved) {
+    if (!audioStream) throw new Error('Audio file is not open')
+    const bytes = Buffer.from(interleaved.buffer, interleaved.byteOffset, interleaved.byteLength)
+    if (!audioStream.write(bytes)) await once(audioStream, 'drain')
+  },
+  async endAudio() {
+    const stream = audioStream
+    audioStream = null
+    if (stream)
+      await new Promise<void>((resolve, reject) =>
+        stream.end((error?: Error | null) => (error ? reject(error) : resolve()))
+      )
+  },
+
+  async startEncoder({ width, height, fps, outputPath: out, encoder: enc, quality, audio }) {
+    outputPath = out
+    stderrTail = ''
     const args = [
       '-hide_banner',
       '-loglevel',
       'error',
       '-y',
+      ...enc.globalArgs,
       '-f',
       'rawvideo',
       '-pix_fmt',
       'rgba',
       '-s',
-      `${opts.width}x${opts.height}`,
+      `${width}x${height}`,
       '-r',
-      String(opts.fps),
+      fps,
       '-i',
       'pipe:0'
     ]
-    if (opts.audioPath) args.push('-i', opts.audioPath)
+    if (audio) args.push('-f', 'f32le', '-ar', String(audio.sampleRate), '-ac', '2', '-i', audio.path)
     args.push('-map', '0:v:0')
-    if (opts.audioPath) args.push('-map', '1:a?', '-c:a', 'aac', '-b:a', '192k')
+    if (audio) args.push('-map', '1:a:0', '-c:a', 'aac', '-b:a', `${audio.bitrateKbps}k`)
     args.push(
-      '-c:v',
-      opts.videoCodec ?? 'libx264',
-      ...(opts.videoArgs ?? ['-preset', 'medium', '-crf', '18']),
-      // The compositor works in sRGB/BT.709; convert and tag explicitly so players don't guess.
+      // The compositor works in sRGB/BT.709; convert and tag explicitly so players don't have to guess.
       '-vf',
-      'scale=out_color_matrix=bt709:out_range=tv',
+      `scale=out_color_matrix=bt709:out_range=tv${enc.filterSuffix}`,
+      '-c:v',
+      enc.name,
+      ...enc.codecArgs[quality]
+    )
+    if (enc.pixelFormat) args.push('-pix_fmt', enc.pixelFormat)
+    args.push(
       '-colorspace',
       'bt709',
       '-color_primaries',
@@ -64,18 +100,14 @@ const api: EdionExportApi = {
       'bt709',
       '-color_range',
       'tv',
-      '-pix_fmt',
-      'yuv420p',
       '-movflags',
       '+faststart',
       '-shortest',
-      opts.outputPath
+      out
     )
-    const child = spawn(ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'] })
+    const child = spawn(enc.ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'] })
     encoder = child
-    child.stderr?.on('data', (d: Buffer) => {
-      stderrTail = (stderrTail + d.toString()).slice(-2000)
-    })
+    child.stderr?.on('data', (d: Buffer) => (stderrTail = (stderrTail + d.toString()).slice(-1500)))
     // EPIPE when FFmpeg dies early; the exit code carries the real error.
     child.stdin?.on('error', () => {})
     encoderExit = new Promise((resolve, reject) => {
@@ -87,30 +119,23 @@ const api: EdionExportApi = {
 
   async writeFrame(rgba) {
     const stdin = encoder?.stdin
-    if (!stdin || encoder?.exitCode !== null || stdin.destroyed) {
-      throw new Error(`FFmpeg is not running. ${stderrTail}`)
+    if (!encoder || !stdin || encoder.exitCode !== null || stdin.destroyed) {
+      throw new Error(`The encoder stopped unexpectedly. ${stderrTail.trim()}`)
     }
-    if (!stdin.write(rgba)) {
-      await Promise.race([once(stdin, 'drain'), encoderExit])
-    }
+    if (!stdin.write(rgba)) await Promise.race([once(stdin, 'drain'), encoderExit])
   },
 
   async finish() {
     encoder?.stdin?.end()
     const code = await encoderExit
-    if (code !== 0) throw new Error(`FFmpeg exited with code ${code}. ${stderrTail}`)
+    encoder = null
+    if (code !== 0) throw new Error(`FFmpeg exited with code ${code}. ${stderrTail.trim()}`)
   },
 
-  progress: (p) => ipcRenderer.send(EXPORT_IPC.progress, { ...p, jobId }),
-
-  onAbort(cb) {
-    ipcRenderer.on(EXPORT_IPC.abort, () => {
-      cb()
-      void killEncoder().finally(() => {
-        ipcRenderer.send(EXPORT_IPC.progress, { jobId, frame: 0, totalFrames: 0, state: 'cancelled' })
-      })
-    })
-  }
+  discardEncoder,
+  cleanup,
+  progress: (p) => ipcRenderer.send(EXPORT_IPC.progress, jobId, p),
+  onAbort: (cb) => void ipcRenderer.on(EXPORT_IPC.abort, cb)
 }
 
 contextBridge.exposeInMainWorld('edionExport', api)

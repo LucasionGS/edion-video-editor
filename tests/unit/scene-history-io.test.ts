@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
-  collectAudioSources, createProject, createTextClip, evaluateScene, gainAt, History, insertClipAuto,
-  parseProject, ProjectFormatError, serializeProject, setTransition, splitClip, upsertKeyframe
+  collectAudioSources,
+  createProject,
+  createTextClip,
+  evaluateScene,
+  gainAt,
+  History,
+  insertClipAuto,
+  parseProject,
+  ProjectFormatError,
+  serializeProject,
+  setTransition,
+  splitClip,
+  upsertKeyframe
 } from '@core/index'
 import type { Layer, Project, TransitionNode } from '@core/index'
 import { projectWithClips } from './helpers'

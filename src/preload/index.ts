@@ -6,7 +6,7 @@ import {
   PROJECT_IPC,
   SETTINGS_IPC,
   type EdionApi,
-  type ExportProgress
+  type ExportJobState
 } from '@shared/ipc'
 import { mediaApi } from './media'
 
@@ -22,12 +22,16 @@ const api: EdionApi = {
   },
   media: mediaApi,
   export: {
-    start: (job) => ipcRenderer.invoke(EXPORT_IPC.start, job),
+    start: (request) => ipcRenderer.invoke(EXPORT_IPC.start, request),
     cancel: (jobId) => ipcRenderer.invoke(EXPORT_IPC.cancel, jobId),
-    onProgress: (cb) => {
-      const listener = (_e: unknown, p: ExportProgress): void => cb(p)
-      ipcRenderer.on(EXPORT_IPC.progress, listener)
-      return () => ipcRenderer.removeListener(EXPORT_IPC.progress, listener)
+    list: () => ipcRenderer.invoke(EXPORT_IPC.list),
+    clearFinished: () => ipcRenderer.invoke(EXPORT_IPC.clear),
+    reveal: (path) => ipcRenderer.invoke(EXPORT_IPC.reveal, path),
+    encoders: () => ipcRenderer.invoke(EXPORT_IPC.encoders),
+    onUpdate: (cb) => {
+      const listener = (_e: unknown, jobs: ExportJobState[]): void => cb(jobs)
+      ipcRenderer.on(EXPORT_IPC.update, listener)
+      return () => ipcRenderer.removeListener(EXPORT_IPC.update, listener)
     }
   },
   project: {
@@ -39,7 +43,8 @@ const api: EdionApi = {
     listAutosaves: () => ipcRenderer.invoke(PROJECT_IPC.listAutosaves),
     readAutosave: (id) => ipcRenderer.invoke(PROJECT_IPC.readAutosave, id),
     clearAutosave: (id) => ipcRenderer.invoke(PROJECT_IPC.clearAutosave, id),
-    setTitle: (title, dirty) => ipcRenderer.send(PROJECT_IPC.setTitle, title, dirty)
+    setTitle: (title, dirty) => ipcRenderer.send(PROJECT_IPC.setTitle, title, dirty),
+    initialPath: () => ipcRenderer.invoke(PROJECT_IPC.initialPath)
   },
   library: {
     import: (paths) => ipcRenderer.invoke(LIBRARY_IPC.import, paths),

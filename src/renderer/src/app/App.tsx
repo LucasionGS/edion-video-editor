@@ -1,46 +1,41 @@
 import { useEffect, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { Film, Layers, SlidersHorizontal } from 'lucide-react'
-import type { FfmpegInfo } from '@shared/ipc'
+import { SlidersHorizontal } from 'lucide-react'
+import { MediaLibrary } from '@/features/library/MediaLibrary'
+import { Timeline } from '@/features/timeline/Timeline'
+import { Viewer } from '@/features/viewer/Viewer'
+import { isDirty, useEditor } from '@/store/editor'
+import { autosave, openProject } from '@/store/projectActions'
+import { ConfirmDialog, Toasts } from '@/ui/Feedback'
 import { EmptyState, PanelFrame } from '@/ui/Panel'
-import { SpikePanel } from '@/features/export/SpikePanel'
+import { useShortcuts } from './shortcuts'
+import { TopBar } from './TopBar'
 
 export function App() {
-  const [ffmpeg, setFfmpeg] = useState<FfmpegInfo | null>(null)
-  const [ffmpegError, setFfmpegError] = useState<string | null>(null)
-
+  const [exportOpen, setExportOpen] = useState(false)
+  useShortcuts()
+  useWindowTitle()
+  useAutosave()
   useEffect(() => {
-    window.edion.ffmpeg.info().then(setFfmpeg, (e: Error) => setFfmpegError(e.message))
+    void window.edion.project.initialPath().then((path) => {
+      if (path) void openProject(path)
+    })
   }, [])
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-10 shrink-0 items-center justify-between border-b border-line bg-surface px-3">
-        <div className="flex items-center gap-2">
-          <Film size={16} className="text-accent" />
-          <span className="text-sm font-semibold">Edion</span>
-          <span className="text-xs text-faint">Untitled project</span>
-        </div>
-        <span className={`text-2xs ${ffmpegError ? 'text-danger' : 'text-faint'}`}>
-          {ffmpegError ?? (ffmpeg ? `FFmpeg ${ffmpeg.version} · ${ffmpeg.source}` : 'Locating FFmpeg…')}
-        </span>
-      </header>
-
+      <TopBar onExport={() => setExportOpen(true)} />
       <Group orientation="vertical" className="min-h-0 flex-1">
-        <Panel defaultSize="62" minSize="30">
+        <Panel defaultSize="58" minSize="25">
           <Group orientation="horizontal">
-            <Panel defaultSize="22" minSize={200} collapsible>
-              <PanelFrame title="Library">
-                <EmptyState
-                  icon={<Layers size={22} />}
-                  title="No media yet"
-                  hint="Media, text, transitions and effects will live here."
-                />
+            <Panel defaultSize="24" minSize={200} collapsible>
+              <PanelFrame title="Media">
+                <MediaLibrary />
               </PanelFrame>
             </Panel>
             <Separator className="w-px bg-line" />
             <Panel minSize="30">
-              <SpikePanel />
+              <Viewer />
             </Panel>
             <Separator className="w-px bg-line" />
             <Panel defaultSize="22" minSize={220} collapsible>
@@ -56,11 +51,28 @@ export function App() {
         </Panel>
         <Separator className="h-px bg-line" />
         <Panel minSize="20">
-          <PanelFrame title="Timeline">
-            <EmptyState icon={<Film size={22} />} title="Timeline" hint="Arrives in milestone 3." />
-          </PanelFrame>
+          <Timeline />
         </Panel>
       </Group>
+      {exportOpen && null}
+      <Toasts />
+      <ConfirmDialog />
     </div>
   )
+}
+
+function useWindowTitle(): void {
+  const name = useEditor((s) => s.project.name)
+  const dirty = useEditor((s) => isDirty(s))
+  useEffect(() => window.edion.project.setTitle(name, dirty), [name, dirty])
+}
+
+function useAutosave(): void {
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined
+    void window.edion.settings.get().then((settings) => {
+      timer = setInterval(() => void autosave(), Math.max(5, settings.autosaveSeconds) * 1000)
+    })
+    return () => clearInterval(timer)
+  }, [])
 }

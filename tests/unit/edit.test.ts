@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import {
-  clipEnd, createCaptionClip, createTextClip, deleteClips, detachAudio, evaluate, findClip, insertClip,
-  insertClipAuto, moveClips, nearestFreeStart, pasteClips, projectDuration, setClipSpeed, setTransition,
-  splitClip, trimClip, upsertKeyframe
+  clipEnd,
+  createCaptionClip,
+  createTextClip,
+  deleteClips,
+  detachAudio,
+  evaluate,
+  findClip,
+  insertClip,
+  insertClipAuto,
+  moveClips,
+  nearestFreeStart,
+  pasteClips,
+  projectDuration,
+  setClipSpeed,
+  setTransition,
+  splitClip,
+  trimClip,
+  upsertKeyframe
 } from '@core/index'
 import type { VideoClip } from '@core/index'
 import { assertTrackInvariants, projectWithClips } from './helpers'
@@ -171,7 +186,11 @@ describe('speed, paste, detach', () => {
   })
   it('pastes with relative timing on free space', () => {
     const { project, clips } = projectWithClips([0, 50], [80, 50])
-    const ids = pasteClips(project, clips.map((clip) => ({ clip, trackId: project.tracks[0]!.id })), 500)
+    const ids = pasteClips(
+      project,
+      clips.map((clip) => ({ clip, trackId: project.tracks[0]!.id })),
+      500
+    )
     expect(ids.map((id) => findClip(project, id)!.clip.start)).toEqual([500, 580])
     assertTrackInvariants(project)
   })

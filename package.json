@@ -14,8 +14,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:export": "electron-vite build && node scripts/golden-export.mjs",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css,html}\" \"scripts/**\" \"*.ts\"",
+    "test:export": "electron-vite build && vitest run -c vitest.e2e.config.ts",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,html}\" \"tests/**/*.ts\" \"*.ts\"",
     "dist": "pnpm build && electron-builder"
   },
   "dependencies": {

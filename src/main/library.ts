@@ -25,6 +25,8 @@ const PEAK_SAMPLE_RATE = 8000
 const allowedFiles = new Set<string>()
 const cacheRoot = (): string => join(app.getPath('userData'), 'cache')
 
+export const allowFile = (path: string): void => void allowedFiles.add(resolve(path))
+
 export const fileUrl = (path: string): string => `${FILE_PROTOCOL}://local/${encodeURIComponent(path)}`
 
 export function registerFileProtocolScheme(): void {
@@ -101,12 +103,11 @@ async function buildFilmstrip(path: string): Promise<Filmstrip | null> {
   const tileWidth = Math.max(2, Math.round((TILE_HEIGHT * aspect) / 2) * 2)
   const interval = Math.max(1, info.duration / MAX_TILES)
   const count = Math.max(1, Math.min(MAX_TILES, Math.ceil(info.duration / interval)))
-  await backgroundJobs.run(() =>
+  const render = (keyframesOnly: boolean): Promise<void> =>
     runFfmpeg({
       args: [
         '-y',
-        '-skip_frame',
-        'nokey',
+        ...(keyframesOnly ? ['-skip_frame', 'nokey'] : []),
         '-i',
         path,
         '-an',
@@ -119,26 +120,12 @@ async function buildFilmstrip(path: string): Promise<Filmstrip | null> {
         '5',
         sprite
       ]
-    }).catch(() =>
-      // Sparse keyframes can starve `-skip_frame nokey`; decode everything instead.
-      runFfmpeg({
-        args: [
-          '-y',
-          '-i',
-          path,
-          '-an',
-          '-sn',
-          '-vf',
-          `fps=1/${interval},scale=${tileWidth}:${TILE_HEIGHT},tile=${count}x1`,
-          '-frames:v',
-          '1',
-          '-q:v',
-          '5',
-          sprite
-        ]
-      })
-    )
-  )
+    })
+  await backgroundJobs.run(async () => {
+    // Decoding only keyframes is far faster on long files, but short clips may have too few of them to fill the strip.
+    if (interval >= 2) await render(true).catch(() => {})
+    if (!(await exists(sprite))) await render(false)
+  })
   const data = { count, interval, tileWidth, tileHeight: TILE_HEIGHT }
   await writeFileAtomic(meta, JSON.stringify(data))
   return { ...data, url: fileUrl(sprite) }

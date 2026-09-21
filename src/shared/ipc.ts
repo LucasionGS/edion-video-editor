@@ -28,19 +28,6 @@ export interface MediaProbe {
   streams: MediaStreamInfo[]
 }
 
-export interface ExportSpikeRequest {
-  inputPath: string
-  outputPath: string
-}
-
-export interface ExportProgress {
-  jobId: string
-  frame: number
-  totalFrames: number
-  state: 'running' | 'done' | 'error' | 'cancelled'
-  message?: string
-}
-
 /** API exposed on `window.edion` in the editor window. */
 export interface EdionApi {
   platform: string
@@ -72,47 +59,117 @@ export const IPC = {
   dialogSaveFile: 'dialog:saveFile'
 } as const
 
-export interface ExportJob {
-  id: string
-  inputPath: string
+// ── Export ─────────────────────────────────────────────────────────────────────────────────────────
+
+export type ExportQuality = 'high' | 'medium' | 'low'
+
+export interface ExportSettings {
+  /** Output size; must have the project's aspect ratio. */
+  width: number
+  height: number
+  /** Frame range to export, or null for the whole timeline. */
+  range: { in: number; out: number } | null
+  /** 'auto' prefers hardware, 'software' forces libx264, otherwise an encoder name. */
+  encoder: string
+  quality: ExportQuality
+  audioBitrateKbps: number
+}
+
+export interface ExportRequest {
+  projectJson: string
+  name: string
   outputPath: string
+  settings: ExportSettings
+}
+
+export interface EncoderInfo {
+  name: string
+  label: string
+  hardware: boolean
+}
+
+/** An encoder plus everything needed to invoke it. */
+export interface ResolvedEncoder extends EncoderInfo {
+  ffmpegPath: string
+  /** Global options placed before the inputs (e.g. the VAAPI device). */
+  globalArgs: string[]
+  /** Appended to the colour-conversion filter chain (e.g. `format=nv12,hwupload`). */
+  filterSuffix: string
+  /** Codec options per quality level. */
+  codecArgs: Record<ExportQuality, string[]>
+  /** Software pixel format, or null when frames are uploaded to the GPU by the filter chain. */
+  pixelFormat: string | null
+}
+
+export interface ExportJobState {
+  id: string
+  name: string
+  outputPath: string
+  state: 'queued' | 'running' | 'done' | 'error' | 'cancelled'
+  phase: 'audio' | 'video' | 'finishing'
+  frame: number
+  totalFrames: number
+  startedAt: number | null
+  finishedAt: number | null
+  encoder: string | null
+  message?: string
+}
+
+export type ExportProgress = Pick<ExportJobState, 'phase' | 'frame' | 'totalFrames'> &
+  Partial<Pick<ExportJobState, 'encoder' | 'message'>> & { state: 'running' | 'done' | 'error' | 'cancelled' }
+
+export interface EncoderStart {
+  width: number
+  height: number
+  fps: string
+  outputPath: string
+  encoder: ResolvedEncoder
+  quality: ExportQuality
+  /** Raw interleaved f32le stereo mixdown, or null for a silent project. */
+  audio: { path: string; sampleRate: number; bitrateKbps: number } | null
 }
 
 /** API exposed on `window.edionExport` in the hidden export window. */
 export interface EdionExportApi {
   media: EdionApi['media']
-  getJob(): Promise<ExportJob>
-  startEncoder(opts: EncoderOptions): Promise<void>
+  library: Pick<EdionMediaLibraryApi, 'fileUrl'>
+  /** The request plus encoders to try, in order (the last one is always software). */
+  getJob(): Promise<{ request: ExportRequest; encoders: ResolvedEncoder[] }>
+  beginAudio(): Promise<string>
+  appendAudio(interleaved: Float32Array): Promise<void>
+  endAudio(): Promise<void>
+  startEncoder(start: EncoderStart): Promise<void>
   /** Resolves once FFmpeg has accepted the frame (applies backpressure). */
   writeFrame(rgba: Uint8Array): Promise<void>
   finish(): Promise<void>
-  progress(p: Omit<ExportProgress, 'jobId'>): void
+  /** Kills the encoder and deletes the partial output (before a retry, or on abort). */
+  discardEncoder(): Promise<void>
+  cleanup(): Promise<void>
+  progress(p: ExportProgress): void
   onAbort(cb: () => void): void
-}
-
-export interface EncoderOptions {
-  width: number
-  height: number
-  fps: number
-  outputPath: string
-  /** Optional file whose audio streams are muxed in. */
-  audioPath?: string
-  videoCodec?: string
-  videoArgs?: string[]
 }
 
 export const EXPORT_IPC = {
   start: 'export:start',
   cancel: 'export:cancel',
+  list: 'export:list',
+  clear: 'export:clear',
+  reveal: 'export:reveal',
+  encoders: 'export:encoders',
+  update: 'export:update',
   getJob: 'export:getJob',
   progress: 'export:progress',
   abort: 'export:abort'
 } as const
 
 export interface EdionApiExport {
-  start(job: Omit<ExportJob, 'id'>): Promise<string>
+  start(request: ExportRequest): Promise<string>
   cancel(jobId: string): Promise<void>
-  onProgress(cb: (p: ExportProgress) => void): () => void
+  list(): Promise<ExportJobState[]>
+  clearFinished(): Promise<void>
+  reveal(path: string): Promise<void>
+  encoders(): Promise<EncoderInfo[]>
+  onUpdate(cb: (jobs: ExportJobState[]) => void): () => void
 }
 
 // ── Projects, settings, media cache ─────────────────────────────────────────────────────────────────
@@ -177,6 +234,8 @@ export interface EdionProjectApi {
   readAutosave(projectId: string): Promise<string>
   clearAutosave(projectId: string): Promise<void>
   setTitle(title: string, dirty: boolean): void
+  /** Project passed on the command line / opened from the file manager, if any. */
+  initialPath(): Promise<string | null>
 }
 
 export interface EdionMediaLibraryApi {
@@ -202,7 +261,8 @@ export const PROJECT_IPC = {
   listAutosaves: 'project:listAutosaves',
   readAutosave: 'project:readAutosave',
   clearAutosave: 'project:clearAutosave',
-  setTitle: 'project:setTitle'
+  setTitle: 'project:setTitle',
+  initialPath: 'project:initialPath'
 } as const
 
 export const LIBRARY_IPC = {

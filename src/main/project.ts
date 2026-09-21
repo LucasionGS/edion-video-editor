@@ -1,5 +1,5 @@
 import { copyFile, mkdir, readdir, readFile, rm } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { PROJECT_EXTENSION, PROJECT_IPC, type AutosaveInfo, type ProjectFile } from '@shared/ipc'
 import { addRecent, writeFileAtomic } from './settings'
@@ -24,7 +24,20 @@ async function save(path: string, json: string, name: string): Promise<string> {
   return path
 }
 
+/** A `.edion` path given on the command line (file association, "Open with", or EDION_OPEN for tests). */
+function initialProjectPath(): string | null {
+  const candidate =
+    process.env['EDION_OPEN'] ?? process.argv.slice(1).find((a) => a.endsWith(`.${PROJECT_EXTENSION}`))
+  return candidate ? resolve(candidate) : null
+}
+
 export function registerProjectIpc(): void {
+  let initial = initialProjectPath()
+  ipcMain.handle(PROJECT_IPC.initialPath, () => {
+    const path = initial
+    initial = null
+    return path
+  })
   ipcMain.handle(PROJECT_IPC.open, async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const res = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: FILTERS })

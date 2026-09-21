@@ -3,13 +3,24 @@ import type { MediaAsset, Project, VideoClip } from '@core/index'
 
 export function videoAsset(duration = 10): MediaAsset {
   return {
-    id: newId(), kind: 'video', name: 'clip.mp4', path: '/tmp/clip.mp4', size: 1,
-    duration, width: 1920, height: 1080, fps: 30, hasAudio: true
+    id: newId(),
+    kind: 'video',
+    name: 'clip.mp4',
+    path: '/tmp/clip.mp4',
+    size: 1,
+    duration,
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    hasAudio: true
   }
 }
 
 /** Project with one 10 s video asset and clips placed at the given [start, duration] frames on the video track. */
-export function projectWithClips(...spans: Array<[number, number]>): { project: Project; clips: VideoClip[] } {
+export function projectWithClips(...spans: Array<[number, number]>): {
+  project: Project
+  clips: VideoClip[]
+} {
   const project = createProject()
   const asset = videoAsset()
   addMedia(project, asset)
