@@ -193,8 +193,14 @@ if (isAutomatedRun) {
 }
 
 // Automated runs must stay silent as well as invisible.
-if (process.env['EDION_SCREENSHOT'] || process.env['EDION_HEADLESS_EXPORT'])
-  app.commandLine.appendSwitch('mute-audio')
+if (isAutomatedRun) app.commandLine.appendSwitch('mute-audio')
+
+// Without a GPU (CI runners, some VMs) Chromium blocklists WebGL entirely. Let it fall back to
+// SwiftShader, the bundled software renderer: slower, but the compositor works everywhere.
+if (isAutomatedRun || process.env['EDION_SOFTWARE_GL']) {
+  app.commandLine.appendSwitch('enable-unsafe-swiftshader')
+  app.commandLine.appendSwitch('ignore-gpu-blocklist')
+}
 
 registerFileProtocolScheme()
 

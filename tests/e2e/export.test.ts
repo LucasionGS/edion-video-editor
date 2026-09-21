@@ -88,7 +88,11 @@ function exportProject(project: Project, name: string): string {
   writeFileSync(projectPath, serializeProject(project))
   // CI runners restrict user namespaces and npm cannot install Chromium's setuid sandbox helper, so the
   // app would abort at startup. The pages under test are our own, so the sandbox buys nothing here.
-  const flags = process.env['CI'] ? ['--no-sandbox'] : []
+  // EDION_E2E_NO_GPU=1 reproduces a GPU-less runner locally (software WebGL via SwiftShader).
+  const flags = [
+    ...(process.env['CI'] ? ['--no-sandbox'] : []),
+    ...(process.env['EDION_E2E_NO_GPU'] ? ['--disable-gpu'] : [])
+  ]
   const run = spawnSync(electron, [root, ...flags], {
     env: { ...process.env, EDION_HEADLESS_EXPORT: `${projectPath}::${output}`, EDION_DEBUG_EXPORT: '1' },
     timeout: 150_000,
