@@ -61,3 +61,36 @@ export function duplicateSelection(): void {
 export function selectAll(): void {
   select(state().project.tracks.flatMap((t) => (t.locked ? [] : t.clips.map((c) => c.id))))
 }
+
+/** Marks the export range: I sets the in point, O the out point (exclusive), at the playhead. */
+export function setRangeEdge(edge: 'in' | 'out'): void {
+  const { project, playhead } = state()
+  const end = Math.max(1, ...project.tracks.flatMap((t) => t.clips.map((c) => c.start + c.duration)))
+  edit(edge === 'in' ? 'Set in point' : 'Set out point', (draft) => {
+    const range = draft.range ?? { in: 0, out: end }
+    if (edge === 'in') range.in = Math.min(playhead, end - 1)
+    else range.out = Math.max(1, playhead)
+    if (range.out <= range.in) {
+      if (edge === 'in') range.out = end
+      else range.in = 0
+    }
+    draft.range = range
+  })
+}
+
+export const clearRange = (): void => edit('Clear range', (draft) => void (draft.range = null))
+
+export function addMarker(): void {
+  const { playhead } = state()
+  edit('Add marker', (draft) => {
+    if (draft.markers.some((m) => m.frame === playhead))
+      draft.markers = draft.markers.filter((m) => m.frame !== playhead)
+    else
+      draft.markers.push({
+        id: crypto.randomUUID().slice(0, 12),
+        frame: playhead,
+        label: '',
+        color: '#f5c451'
+      })
+  })
+}

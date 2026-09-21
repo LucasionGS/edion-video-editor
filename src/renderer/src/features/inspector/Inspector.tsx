@@ -1,0 +1,656 @@
+import { useState } from 'react'
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Eye,
+  EyeOff,
+  Italic,
+  Plus,
+  RotateCcw,
+  SlidersHorizontal,
+  Trash2,
+  Unlink
+} from 'lucide-react'
+import {
+  defaultTransform,
+  detachAudio,
+  EFFECTS,
+  effectSpec,
+  findClip,
+  isAudibleClip,
+  isVisualClip,
+  newId,
+  setClipSpeed
+} from '@core/index'
+import type { BlendMode, Clip, TextStyle, VisualClip } from '@core/index'
+import { edit, select, useEditor } from '@/store/editor'
+import { editClips } from '@/store/clipEdits'
+import { Button } from '@/ui/Button'
+import { ColorInput } from '@/ui/ColorInput'
+import { Select } from '@/ui/Field'
+import { IconButton } from '@/ui/IconButton'
+import { NumberInput } from '@/ui/NumberInput'
+import { EmptyState } from '@/ui/Panel'
+import { AnimNumberRow, AnimVec2Row, Row, scrub, Section } from './anim'
+import { useFontFamilies } from './fonts'
+import { ProjectSettings } from './ProjectSettings'
+
+const BLEND_MODES: BlendMode[] = ['normal', 'add', 'multiply', 'screen', 'overlay', 'darken', 'lighten']
+const percent = { display: 100, suffix: '%', step: 1, precision: 0 }
+
+export function Inspector() {
+  const selection = useEditor((s) => s.selection)
+  const clip = useEditor((s) =>
+    s.selection.length === 1 ? findClip(s.project, s.selection[0]!)?.clip : undefined
+  )
+
+  if (selection.length === 0) return <ProjectSettings />
+  if (!clip) {
+    return (
+      <EmptyState
+        icon={<SlidersHorizontal size={22} />}
+        title={`${selection.length} clips selected`}
+        hint="Select a single clip to edit its properties."
+      />
+    )
+  }
+  return (
+    <div key={clip.id}>
+      <ClipHeader clip={clip} />
+      {(clip.type === 'text' || clip.type === 'caption') && <TextSection clip={clip} />}
+      {clip.type === 'shape' && <ShapeSection clip={clip} />}
+      {isVisualClip(clip) && <TransformSection clip={clip} />}
+      {(clip.type === 'video' || clip.type === 'image') && <CropSection clip={clip} />}
+      {(clip.type === 'video' || clip.type === 'audio') && <SpeedSection clip={clip} />}
+      {isAudibleClip(clip) && !(clip.type === 'video' && clip.audioMuted) && <AudioSection clip={clip} />}
+      {isVisualClip(clip) && <EffectsSection clip={clip} />}
+    </div>
+  )
+}
+
+function ClipHeader({ clip }: { clip: Clip }) {
+  const fps = useEditor((s) => s.project.settings.fps)
+  return (
+    <div className="border-b border-line px-3 py-2.5">
+      <input
+        aria-label="Clip name"
+        defaultValue={clip.name}
+        key={clip.name}
+        className="w-full rounded bg-transparent text-xs font-medium outline-none select-text focus:bg-bg focus:px-1.5 focus:ring-1 focus:ring-accent"
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur()
+        }}
+        onBlur={(e) => {
+          const name = e.target.value.trim()
+          if (name && name !== clip.name) editClips([clip.id], 'Rename clip', (c) => void (c.name = name))
+        }}
+      />
+      <p className="mt-0.5 text-2xs text-faint capitalize">
+        {clip.type} · {(clip.duration / fps).toFixed(2)} s
+      </p>
+    </div>
+  )
+}
+
+function TransformSection({ clip }: { clip: VisualClip }) {
+  const [linked, setLinked] = useState(true)
+  return (
+    <Section
+      title="Transform"
+      actions={
+        <IconButton
+          label="Reset transform"
+          className="size-5"
+          onClick={() =>
+            editClips(
+              [clip.id],
+              'Reset transform',
+              (c) => isVisualClip(c) && void (c.transform = defaultTransform())
+            )
+          }
+        >
+          <RotateCcw size={11} />
+        </IconButton>
+      }
+    >
+      <AnimVec2Row
+        clip={clip}
+        label="Position"
+        labels={['X', 'Y']}
+        get={(c) => (isVisualClip(c) ? c.transform.position : undefined)}
+        spec={{ precision: 0, suffix: ' px' }}
+      />
+      <AnimVec2Row
+        clip={clip}
+        label="Scale"
+        labels={['width', 'height']}
+        linked={linked}
+        get={(c) => (isVisualClip(c) ? c.transform.scale : undefined)}
+        spec={{ ...percent, min: -1000, max: 1000 }}
+      />
+      <Row label="">
+        <button
+          className={`text-2xs ${linked ? 'text-accent' : 'text-faint hover:text-fg'}`}
+          onClick={() => setLinked(!linked)}
+        >
+          {linked ? 'Proportions locked' : 'Proportions unlocked'}
+        </button>
+      </Row>
+      <AnimNumberRow
+        clip={clip}
+        label="Rotation"
+        get={(c) => (isVisualClip(c) ? c.transform.rotation : undefined)}
+        spec={{ suffix: '°', step: 1, precision: 1 }}
+      />
+      <AnimNumberRow
+        clip={clip}
+        label="Opacity"
+        get={(c) => (isVisualClip(c) ? c.transform.opacity : undefined)}
+        spec={{ ...percent, min: 0, max: 100 }}
+      />
+      <Row label="Blend">
+        <Select
+          value={clip.blendMode}
+          onChange={(e) =>
+            editClips(
+              [clip.id],
+              'Change blend mode',
+              (c) => isVisualClip(c) && void (c.blendMode = e.target.value as BlendMode)
+            )
+          }
+        >
+          {BLEND_MODES.map((m) => (
+            <option key={m} value={m} className="capitalize">
+              {m[0]!.toUpperCase() + m.slice(1)}
+            </option>
+          ))}
+        </Select>
+      </Row>
+    </Section>
+  )
+}
+
+function CropSection({ clip }: { clip: Extract<Clip, { type: 'video' | 'image' }> }) {
+  const sides = ['left', 'top', 'right', 'bottom'] as const
+  return (
+    <Section title="Crop">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+        {sides.map((side) => (
+          <Row key={side} label={side[0]!.toUpperCase() + side.slice(1)}>
+            <NumberInput
+              label={`Crop ${side}`}
+              value={clip.crop[side] * 100}
+              min={0}
+              max={95}
+              precision={0}
+              suffix="%"
+              {...scrub}
+              onChange={(v) =>
+                editClips([clip.id], 'Crop', (c) => 'crop' in c && void (c.crop[side] = v / 100))
+              }
+            />
+          </Row>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function SpeedSection({ clip }: { clip: Extract<Clip, { type: 'video' | 'audio' }> }) {
+  return (
+    <Section title="Speed">
+      <Row label="Speed">
+        <NumberInput
+          label="Speed"
+          value={clip.speed * 100}
+          min={5}
+          max={1000}
+          step={5}
+          precision={0}
+          suffix="%"
+          {...scrub}
+          onChange={(v) => edit('Change speed', (d) => setClipSpeed(d, clip.id, v / 100))}
+        />
+      </Row>
+      <p className="text-2xs text-faint">Changing speed also changes pitch.</p>
+    </Section>
+  )
+}
+
+function AudioSection({ clip }: { clip: Extract<Clip, { type: 'video' | 'audio' }> }) {
+  const fps = useEditor((s) => s.project.settings.fps)
+  const fade = (key: 'fadeIn' | 'fadeOut', label: string) => (
+    <Row label={label}>
+      <NumberInput
+        label={label}
+        value={clip[key] / fps}
+        min={0}
+        max={clip.duration / fps}
+        step={0.1}
+        precision={1}
+        suffix=" s"
+        {...scrub}
+        onChange={(v) =>
+          editClips([clip.id], label, (c) => isAudibleClip(c) && void (c[key] = Math.round(v * fps)))
+        }
+      />
+    </Row>
+  )
+  return (
+    <Section title="Audio">
+      <AnimNumberRow
+        clip={clip}
+        label="Volume"
+        get={(c) => (isAudibleClip(c) ? c.volume : undefined)}
+        spec={{ ...percent, min: 0, max: 400 }}
+      />
+      {fade('fadeIn', 'Fade in')}
+      {fade('fadeOut', 'Fade out')}
+      {clip.type === 'video' && (
+        <Button
+          className="mt-1 self-start"
+          onClick={() => {
+            let id: string | null = null
+            edit('Detach audio', (d) => void (id = detachAudio(d, clip.id)))
+            if (id) select([id])
+          }}
+        >
+          <Unlink size={13} /> Detach audio
+        </Button>
+      )}
+    </Section>
+  )
+}
+
+function TextSection({ clip }: { clip: Extract<Clip, { type: 'text' | 'caption' }> }) {
+  return (
+    <Section title={clip.type === 'caption' ? 'Caption' : 'Text'}>
+      <textarea
+        aria-label="Text"
+        value={clip.text}
+        rows={3}
+        onKeyDown={(e) => e.stopPropagation()}
+        onChange={(e) =>
+          editClips(
+            [clip.id],
+            'Edit text',
+            (c) => (c.type === 'text' || c.type === 'caption') && void (c.text = e.target.value)
+          )
+        }
+        className="w-full resize-y rounded-md border border-line bg-bg px-2 py-1.5 text-xs leading-relaxed outline-none select-text focus:border-accent"
+      />
+      {clip.type === 'text' ? (
+        <>
+          <TextStyleFields
+            style={clip.style}
+            onChange={(patch) =>
+              editClips(
+                [clip.id],
+                'Change text style',
+                (c) => c.type === 'text' && void Object.assign(c.style, patch)
+              )
+            }
+          />
+          <Row label="Wrap width">
+            <NumberInput
+              label="Wrap width"
+              value={clip.boxWidth}
+              min={0}
+              max={10000}
+              step={10}
+              precision={0}
+              suffix=" px"
+              {...scrub}
+              onChange={(v) =>
+                editClips([clip.id], 'Change wrap width', (c) => c.type === 'text' && void (c.boxWidth = v))
+              }
+            />
+          </Row>
+        </>
+      ) : (
+        <CaptionStyle />
+      )}
+    </Section>
+  )
+}
+
+function CaptionStyle() {
+  const style = useEditor((s) => s.project.captionStyle)
+  return (
+    <>
+      <p className="mt-1 text-2xs text-faint">Style (shared by all captions)</p>
+      <TextStyleFields
+        style={style}
+        onChange={(patch) => edit('Change caption style', (d) => void Object.assign(d.captionStyle, patch))}
+      />
+    </>
+  )
+}
+
+export function TextStyleFields({
+  style,
+  onChange
+}: {
+  style: TextStyle
+  onChange(patch: Partial<TextStyle>): void
+}) {
+  const fonts = useFontFamilies()
+  const aligns = [
+    { value: 'left', Icon: AlignLeft },
+    { value: 'center', Icon: AlignCenter },
+    { value: 'right', Icon: AlignRight }
+  ] as const
+  return (
+    <>
+      <Row label="Font">
+        <Select value={style.fontFamily} onChange={(e) => onChange({ fontFamily: e.target.value })}>
+          {!fonts.includes(style.fontFamily) && <option>{style.fontFamily}</option>}
+          {fonts.map((f) => (
+            <option key={f}>{f}</option>
+          ))}
+        </Select>
+      </Row>
+      <Row label="Size">
+        <NumberInput
+          label="Font size"
+          value={style.fontSize}
+          min={4}
+          max={1000}
+          precision={0}
+          suffix=" px"
+          {...scrub}
+          onChange={(v) => onChange({ fontSize: v })}
+        />
+        <Select
+          aria-label="Weight"
+          className="max-w-24"
+          value={style.fontWeight}
+          onChange={(e) => onChange({ fontWeight: Number(e.target.value) })}
+        >
+          {[300, 400, 500, 600, 700, 800, 900].map((w) => (
+            <option key={w} value={w}>
+              {w}
+            </option>
+          ))}
+        </Select>
+      </Row>
+      <Row label="Style">
+        <IconButton label="Italic" active={style.italic} onClick={() => onChange({ italic: !style.italic })}>
+          <Italic size={14} />
+        </IconButton>
+        <span className="mx-1 h-4 w-px bg-line" />
+        {aligns.map(({ value, Icon }) => (
+          <IconButton
+            key={value}
+            label={`Align ${value}`}
+            active={style.align === value}
+            onClick={() => onChange({ align: value })}
+          >
+            <Icon size={14} />
+          </IconButton>
+        ))}
+      </Row>
+      <Row label="Colour">
+        <ColorInput label="Text colour" value={style.color} onChange={(color) => onChange({ color })} />
+      </Row>
+      <Row label="Spacing">
+        <NumberInput
+          label="Line height"
+          value={style.lineHeight}
+          min={0.5}
+          max={4}
+          step={0.05}
+          precision={2}
+          suffix="×"
+          {...scrub}
+          onChange={(v) => onChange({ lineHeight: v })}
+        />
+        <NumberInput
+          label="Letter spacing"
+          value={style.letterSpacing}
+          min={-50}
+          max={200}
+          step={0.5}
+          precision={1}
+          suffix=" px"
+          {...scrub}
+          onChange={(v) => onChange({ letterSpacing: v })}
+        />
+      </Row>
+      <Row label="Outline">
+        <NumberInput
+          label="Outline width"
+          value={style.strokeWidth}
+          min={0}
+          max={100}
+          step={0.5}
+          precision={1}
+          suffix=" px"
+          {...scrub}
+          onChange={(v) => onChange({ strokeWidth: v })}
+        />
+        <ColorInput
+          label="Outline colour"
+          value={style.strokeColor}
+          onChange={(strokeColor) => onChange({ strokeColor })}
+        />
+      </Row>
+      <Row label="Shadow">
+        <NumberInput
+          label="Shadow blur"
+          value={style.shadowBlur}
+          min={0}
+          max={200}
+          precision={0}
+          suffix=" px"
+          {...scrub}
+          onChange={(v) => onChange({ shadowBlur: v })}
+        />
+        <ColorInput
+          label="Shadow colour"
+          alpha
+          value={style.shadowColor}
+          onChange={(shadowColor) => onChange({ shadowColor })}
+        />
+      </Row>
+      <Row label="Box">
+        <ColorInput
+          label="Background colour"
+          alpha
+          value={style.backgroundColor}
+          onChange={(backgroundColor) => onChange({ backgroundColor })}
+        />
+      </Row>
+      <Row label="Box shape">
+        <NumberInput
+          label="Box padding"
+          value={style.backgroundPadding}
+          min={0}
+          max={400}
+          precision={0}
+          suffix=" px"
+          {...scrub}
+          onChange={(v) => onChange({ backgroundPadding: v })}
+        />
+        <NumberInput
+          label="Box corner radius"
+          value={style.backgroundRadius}
+          min={0}
+          max={400}
+          precision={0}
+          suffix=" px"
+          {...scrub}
+          onChange={(v) => onChange({ backgroundRadius: v })}
+        />
+      </Row>
+    </>
+  )
+}
+
+function ShapeSection({ clip }: { clip: Extract<Clip, { type: 'shape' }> }) {
+  const change = (label: string, fn: (c: Extract<Clip, { type: 'shape' }>) => void): void =>
+    editClips([clip.id], label, (c) => c.type === 'shape' && fn(c))
+  return (
+    <Section title="Shape">
+      <Row label="Size">
+        <NumberInput
+          label="Width"
+          value={clip.size[0]}
+          min={1}
+          max={20000}
+          precision={0}
+          suffix=" px"
+          {...scrub}
+          onChange={(v) => change('Resize shape', (c) => void (c.size[0] = v))}
+        />
+        <NumberInput
+          label="Height"
+          value={clip.size[1]}
+          min={1}
+          max={20000}
+          precision={0}
+          suffix=" px"
+          {...scrub}
+          onChange={(v) => change('Resize shape', (c) => void (c.size[1] = v))}
+        />
+      </Row>
+      <Row label="Fill">
+        <ColorInput
+          label="Fill"
+          alpha
+          value={clip.fill}
+          onChange={(fill) => change('Change fill', (c) => void (c.fill = fill))}
+        />
+      </Row>
+      <Row label="Outline">
+        <NumberInput
+          label="Outline width"
+          value={clip.strokeWidth}
+          min={0}
+          max={500}
+          precision={0}
+          suffix=" px"
+          {...scrub}
+          onChange={(v) => change('Change outline', (c) => void (c.strokeWidth = v))}
+        />
+        <ColorInput
+          label="Outline colour"
+          value={clip.strokeColor}
+          onChange={(color) => change('Change outline', (c) => void (c.strokeColor = color))}
+        />
+      </Row>
+      {clip.shape === 'rect' && (
+        <Row label="Corners">
+          <NumberInput
+            label="Corner radius"
+            value={clip.cornerRadius}
+            min={0}
+            max={5000}
+            precision={0}
+            suffix=" px"
+            {...scrub}
+            onChange={(v) => change('Change corners', (c) => void (c.cornerRadius = v))}
+          />
+        </Row>
+      )}
+    </Section>
+  )
+}
+
+function EffectsSection({ clip }: { clip: VisualClip }) {
+  const [adding, setAdding] = useState(false)
+  const change = (label: string, fn: (c: VisualClip) => void): void =>
+    editClips([clip.id], label, (c) => isVisualClip(c) && fn(c))
+  return (
+    <Section
+      title="Effects"
+      actions={
+        <IconButton label="Add effect" className="size-5" active={adding} onClick={() => setAdding(!adding)}>
+          <Plus size={13} />
+        </IconButton>
+      }
+    >
+      {adding && (
+        <div className="mb-1 grid grid-cols-2 gap-1">
+          {EFFECTS.map((spec) => (
+            <button
+              key={spec.type}
+              className="h-7 rounded-md border border-line bg-raised text-xs text-muted hover:border-accent hover:text-fg"
+              onClick={() => {
+                setAdding(false)
+                change(
+                  `Add ${spec.label}`,
+                  (c) =>
+                    void c.effects.push({
+                      id: newId(),
+                      type: spec.type,
+                      enabled: true,
+                      params: Object.fromEntries(
+                        Object.entries(spec.params).map(([key, p]) => [key, { value: p.default }])
+                      )
+                    })
+                )
+              }}
+            >
+              {spec.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {clip.effects.length === 0 && !adding && (
+        <p className="text-2xs text-faint">No effects. Use + to add colour, blur, keying and more.</p>
+      )}
+      {clip.effects.map((effect, index) => {
+        const spec = effectSpec(effect.type)
+        if (!spec) return null
+        return (
+          <div
+            key={effect.id}
+            className={`rounded-lg border border-line bg-bg/60 p-2 ${effect.enabled ? '' : 'opacity-50'}`}
+          >
+            <header className="mb-1 flex items-center gap-1">
+              <span className="flex-1 text-xs font-medium">{spec.label}</span>
+              <IconButton
+                label={effect.enabled ? 'Disable effect' : 'Enable effect'}
+                className="size-5"
+                onClick={() =>
+                  change('Toggle effect', (c) => void (c.effects[index]!.enabled = !effect.enabled))
+                }
+              >
+                {effect.enabled ? <Eye size={12} /> : <EyeOff size={12} />}
+              </IconButton>
+              <IconButton
+                label="Remove effect"
+                className="size-5 hover:text-danger"
+                onClick={() => change('Remove effect', (c) => void c.effects.splice(index, 1))}
+              >
+                <Trash2 size={12} />
+              </IconButton>
+            </header>
+            <div className="flex flex-col gap-1">
+              {Object.entries(spec.params).map(([key, p]) => (
+                <AnimNumberRow
+                  key={key}
+                  clip={clip}
+                  label={p.label}
+                  get={(c) =>
+                    isVisualClip(c) ? c.effects.find((e) => e.id === effect.id)?.params[key] : undefined
+                  }
+                  spec={{
+                    min: p.min,
+                    max: p.max,
+                    step: p.step,
+                    precision: p.step < 1 ? 2 : 0,
+                    suffix: p.unit ? ` ${p.unit}`.replace(' °', '°') : ''
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </Section>
+  )
+}

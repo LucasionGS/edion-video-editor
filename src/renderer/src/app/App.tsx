@@ -1,21 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { SlidersHorizontal } from 'lucide-react'
+import { ExportDialog } from '@/features/export/ExportDialog'
+import { Inspector } from '@/features/inspector/Inspector'
 import { MediaLibrary } from '@/features/library/MediaLibrary'
 import { Timeline } from '@/features/timeline/Timeline'
 import { Viewer } from '@/features/viewer/Viewer'
 import { isDirty, useEditor } from '@/store/editor'
+import { wireExports } from '@/store/exports'
 import { autosave, openProject } from '@/store/projectActions'
 import { ConfirmDialog, Toasts } from '@/ui/Feedback'
-import { EmptyState, PanelFrame } from '@/ui/Panel'
+import { PanelFrame } from '@/ui/Panel'
 import { useShortcuts } from './shortcuts'
 import { TopBar } from './TopBar'
 
 export function App() {
   const [exportOpen, setExportOpen] = useState(false)
-  useShortcuts()
+  useShortcuts(useMemo(() => ({ 'ctrl+e': () => setExportOpen(true) }), []))
   useWindowTitle()
   useAutosave()
+  useEffect(wireExports, [])
   useEffect(() => {
     void window.edion.project.initialPath().then((path) => {
       if (path) void openProject(path)
@@ -40,11 +43,7 @@ export function App() {
             <Separator className="w-px bg-line" />
             <Panel defaultSize="22" minSize={220} collapsible>
               <PanelFrame title="Inspector">
-                <EmptyState
-                  icon={<SlidersHorizontal size={22} />}
-                  title="Nothing selected"
-                  hint="Select a clip to edit its properties."
-                />
+                <Inspector />
               </PanelFrame>
             </Panel>
           </Group>
@@ -54,7 +53,7 @@ export function App() {
           <Timeline />
         </Panel>
       </Group>
-      {exportOpen && null}
+      {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
       <Toasts />
       <ConfirmDialog />
     </div>

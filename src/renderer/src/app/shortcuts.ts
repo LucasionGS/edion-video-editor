@@ -1,12 +1,15 @@
 import { useEffect } from 'react'
 import { jumpSeconds, seek, seekToEnd, stepFrames, togglePlayback } from '@/engine/playback/session'
 import {
+  addMarker,
+  clearRange,
   copySelection,
   cutSelection,
   deleteSelection,
   duplicateSelection,
   paste,
   selectAll,
+  setRangeEdge,
   splitAtPlayhead
 } from '@/store/commands'
 import { redo, select, setZoom, undo, useEditor } from '@/store/editor'
@@ -45,6 +48,10 @@ const SHORTCUTS: Record<string, Handler> = {
   },
   v: () => useEditor.setState({ tool: 'select' }),
   c: () => useEditor.setState({ tool: 'razor' }),
+  i: () => setRangeEdge('in'),
+  o: () => setRangeEdge('out'),
+  'alt+x': clearRange,
+  m: addMarker,
   n: () => useEditor.setState((s) => ({ snapping: !s.snapping })),
   '=': () => setZoom(useEditor.getState().zoom * 1.4),
   '+': () => setZoom(useEditor.getState().zoom * 1.4),
