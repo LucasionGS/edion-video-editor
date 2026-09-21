@@ -41,9 +41,6 @@ import {
 } from './commands'
 import { edit, select, useEditor } from './editor'
 
-/** Share of the shorter frame side kept free when snapping to an edge or corner. */
-const EDGE_MARGIN = 0.04
-
 const shortcut = (id: string): string | undefined => {
   const command = COMMANDS.find((c) => c.id === id)
   const combo = command && keysFor(command, useShortcutState.getState().overrides)[0]
@@ -104,12 +101,11 @@ function align(label: string, horizontal: HorizontalAlign | null, vertical: Vert
       anchor: clip.transform.anchor,
       crop: 'crop' in clip ? clip.crop : undefined
     }
-    const margin = Math.round(Math.min(project.settings.width, project.settings.height) * EDGE_MARGIN)
     const current = evaluate(clip.transform.position, frame)
     setValueAt(
       clip.transform.position,
       frame,
-      alignedPosition(placement, current, project.settings, horizontal, vertical, margin)
+      alignedPosition(placement, current, project.settings, horizontal, vertical)
     )
   })
 }
