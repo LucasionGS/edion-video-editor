@@ -83,3 +83,52 @@ export function alignedPosition(
   // `+ 0` turns -0 into 0 so centred values read and serialise cleanly.
   return [x + 0, y + 0]
 }
+
+export interface EdgeSnap {
+  position: Vec2
+  /** Frame-space lines (x = ... / y = ...) that were snapped to, for drawing guides. */
+  guidesX: number[]
+  guidesY: number[]
+}
+
+/**
+ * Snaps a layer being dragged so that its visible box's left/centre/right (and top/centre/bottom)
+ * align with the frame's edges and centre lines when within `threshold` project pixels.
+ * Guide coordinates are in frame space (origin top-left).
+ */
+export function snapToFrame(
+  placement: Placement,
+  position: Vec2,
+  canvas: Canvas,
+  threshold: number
+): EdgeSnap {
+  const b = boundsAroundAnchor(placement)
+  const solve = (
+    coordinate: number,
+    min: number,
+    max: number,
+    size: number
+  ): { value: number; guide: number | null } => {
+    const half = size / 2
+    // Feature offsets from the anchor: leading edge, centre, trailing edge.
+    const features = [min, (min + max) / 2, max]
+    const lines = [-half, 0, half]
+    let best: { value: number; guide: number; distance: number } | null = null
+    for (const feature of features) {
+      for (const line of lines) {
+        const value = line - feature
+        const distance = Math.abs(value - coordinate)
+        if (distance <= threshold && (!best || distance < best.distance))
+          best = { value, guide: line + half, distance }
+      }
+    }
+    return best ? { value: best.value + 0, guide: best.guide } : { value: coordinate, guide: null }
+  }
+  const sx = solve(position[0], b.minX, b.maxX, canvas.width)
+  const sy = solve(position[1], b.minY, b.maxY, canvas.height)
+  return {
+    position: [sx.value, sy.value],
+    guidesX: sx.guide === null ? [] : [sx.guide],
+    guidesY: sy.guide === null ? [] : [sy.guide]
+  }
+}

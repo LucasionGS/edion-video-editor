@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { evaluate, evaluateScene, findClip, isVisualClip, setValueAt } from '@core/index'
+import { evaluate, evaluateScene, findClip, isVisualClip, setValueAt, snapToFrame } from '@core/index'
 import type { Layer, Project, Vec2, VisualClip } from '@core/index'
 import { naturalSize } from '@/engine/layerSize'
 import { beginTransaction, commitTransaction, rollbackTransaction, select, useEditor } from '@/store/editor'
@@ -19,8 +19,6 @@ const HANDLES = [
 interface Props {
   /** Screen pixels per project pixel. */
   scale: number
-  width: number
-  height: number
 }
 
 const layersAt = (project: Project, frame: number): Layer[] =>
@@ -42,12 +40,12 @@ function hitTest(project: Project, frame: number, px: number, py: number): Visua
 }
 
 /** On-canvas move / scale / rotate for the selected clip, plus click-to-select. */
-export function Gizmo({ scale: k, width, height }: Props) {
+export function Gizmo({ scale: k }: Props) {
   const project = useEditor((s) => s.project)
   const playhead = useEditor((s) => s.playhead)
   const playing = useEditor((s) => s.playing)
   const selection = useEditor((s) => s.selection)
-  const [guides, setGuides] = useState<{ x: boolean; y: boolean }>({ x: false, y: false })
+  const [guides, setGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] })
 
   const found = selection.length === 1 ? findClip(project, selection[0]!) : undefined
   const clip =
@@ -55,7 +53,7 @@ export function Gizmo({ scale: k, width, height }: Props) {
   const active = clip && playhead >= clip.start && playhead < clip.start + clip.duration
 
   const finish = (moved: boolean, cancelled: boolean): void => {
-    setGuides({ x: false, y: false })
+    setGuides({ x: [], y: [] })
     if (!moved) return
     if (cancelled) rollbackTransaction()
     else commitTransaction()
@@ -83,14 +81,23 @@ export function Gizmo({ scale: k, width, height }: Props) {
         onStart: () => beginTransaction('Move'),
         onMove: (dx, dy, ev) => {
           let next: Vec2 = [x + dx / k, y + dy / k]
-          // Snap the anchor to the centre lines unless Alt is held.
-          const snapX = !ev.altKey && Math.abs(next[0]) * k < SNAP_PIXELS
-          const snapY = !ev.altKey && Math.abs(next[1]) * k < SNAP_PIXELS
           if (ev.shiftKey) next = Math.abs(dx) > Math.abs(dy) ? [next[0], y] : [x, next[1]]
-          setGuides({ x: snapX, y: snapY })
-          write('Move', (c, f) =>
-            setValueAt(c.transform.position, f, [snapX ? 0 : next[0], snapY ? 0 : next[1]])
-          )
+          // Snap the item's edges and centre to the frame's edges and centre lines, unless Alt is held.
+          if (ev.altKey) {
+            setGuides({ x: [], y: [] })
+          } else {
+            const placement = {
+              size: [nw, nh] as Vec2,
+              scale: [sx, sy] as Vec2,
+              rotation,
+              anchor: clip.transform.anchor,
+              crop: 'crop' in clip ? clip.crop : undefined
+            }
+            const snapped = snapToFrame(placement, next, project.settings, SNAP_PIXELS / k)
+            next = snapped.position
+            setGuides({ x: snapped.guidesX, y: snapped.guidesY })
+          }
+          write('Move', (c, f) => setValueAt(c.transform.position, f, next))
         },
         onEnd: finish
       })
@@ -188,18 +195,20 @@ export function Gizmo({ scale: k, width, height }: Props) {
         select(hit ? [hit.id] : [])
       }}
     >
-      {guides.x && (
+      {guides.x.map((gx) => (
         <span
+          key={`x${gx}`}
           className="pointer-events-none absolute inset-y-0 w-px bg-accent/80"
-          style={{ left: width / 2 }}
+          style={{ left: gx * k }}
         />
-      )}
-      {guides.y && (
+      ))}
+      {guides.y.map((gy) => (
         <span
+          key={`y${gy}`}
           className="pointer-events-none absolute inset-x-0 h-px bg-accent/80"
-          style={{ top: height / 2 }}
+          style={{ top: gy * k }}
         />
-      )}
+      ))}
       {box}
     </div>
   )

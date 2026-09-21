@@ -70,7 +70,7 @@ export function Viewer() {
           style={{ left: fitted.left, top: fitted.top, width: fitted.width, height: fitted.height }}
         >
           <canvas ref={canvasRef} className="size-full rounded-sm shadow-lg shadow-black/50" />
-          {scale > 0 && <Gizmo scale={scale} width={fitted.width} height={fitted.height} />}
+          {scale > 0 && <Gizmo scale={scale} />}
         </div>
       </div>
       <footer className="@container grid h-11 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-t border-line bg-surface px-3">

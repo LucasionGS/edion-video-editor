@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { alignedPosition, boundsAroundAnchor, frameScale } from '@core/index'
+import { alignedPosition, boundsAroundAnchor, frameScale, snapToFrame } from '@core/index'
 import type { Placement } from '@core/index'
 
 const canvas = { width: 1920, height: 1080 }
@@ -48,5 +48,28 @@ describe('alignment', () => {
   it('handles flipped layers', () => {
     const flipped: Placement = { ...half, scale: [-0.5, 0.5] }
     expect(alignedPosition(flipped, [0, 0], canvas, 'left', 'top')).toEqual([-480, -270])
+  })
+})
+
+describe('snap to frame', () => {
+  it('snaps an edge to the frame edge and reports the guide line', () => {
+    // Half-size layer: its left edge sits 480 px left of the anchor. Frame left edge is at x = -960.
+    const result = snapToFrame(half, [-476, 0], canvas, 8)
+    expect(result.position).toEqual([-480, 0])
+    expect(result.guidesX).toEqual([0])
+    expect(result.guidesY).toEqual([540])
+  })
+  it('snaps the centre to the centre line and a corner to the corner', () => {
+    expect(snapToFrame(half, [5, -6], canvas, 8).position).toEqual([0, 0])
+    expect(snapToFrame(half, [475, 266], canvas, 8).position).toEqual([480, 270])
+  })
+  it('leaves the position alone outside the threshold', () => {
+    const r = snapToFrame(half, [100, 100], canvas, 8)
+    expect(r.position).toEqual([100, 100])
+    expect(r.guidesX).toEqual([])
+  })
+  it('honours anchor and rotation through the visible box', () => {
+    const lowerThird: Placement = { size: [400, 100], scale: [1, 1], rotation: 0, anchor: [0, 1] }
+    expect(snapToFrame(lowerThird, [-955, 536], canvas, 8).position).toEqual([-960, 540])
   })
 })
