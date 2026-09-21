@@ -4,7 +4,13 @@ import { app } from 'electron'
 import type { AppSettings, RecentProject } from '@shared/ipc'
 import { setCustomFfmpegDir } from './ffmpeg/paths'
 
-const DEFAULTS: AppSettings = { ffmpegDir: null, autosaveSeconds: 30, proxiesEnabled: true, recents: [] }
+const DEFAULTS: AppSettings = {
+  ffmpegDir: null,
+  autosaveSeconds: 30,
+  proxiesEnabled: true,
+  shortcuts: {},
+  recents: []
+}
 const MAX_RECENTS = 12
 
 let settings: AppSettings | null = null

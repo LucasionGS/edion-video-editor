@@ -29,6 +29,10 @@ export function attachPlayer(canvas: HTMLCanvasElement): () => void {
       else current.pause()
     }
   })
+  void document.fonts.load('16px "Inter Variable"').then(() => {
+    current.renderer.compositor.clearRasters()
+    current.invalidate()
+  })
   const offProxy = onProxyReady((path) => current.renderer.resetMedia(path))
   return () => {
     offProxy()

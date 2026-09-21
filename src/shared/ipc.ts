@@ -196,6 +196,8 @@ export interface AppSettings {
   ffmpegDir: string | null
   autosaveSeconds: number
   proxiesEnabled: boolean
+  /** Custom key bindings: command id → key combos. Commands not listed use their defaults. */
+  shortcuts: Record<string, string[]>
   recents: RecentProject[]
 }
 

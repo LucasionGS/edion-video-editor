@@ -1,3 +1,4 @@
+import '@fontsource-variable/inter'
 import { fpsToRational, parseProject, projectDuration } from '@core/index'
 import type { ResolvedEncoder } from '@shared/ipc'
 import { mixdown } from './engine/export/mixdown'
@@ -34,6 +35,9 @@ async function run(): Promise<void> {
   renderer.compositor.canvas.width = width
   renderer.compositor.canvas.height = height
   const pixels = new Uint8Array(width * height * 4)
+
+  // Text is rasterised on a canvas, which silently falls back if the bundled font is still loading.
+  await document.fonts.load('16px "Inter Variable"').catch(() => {})
 
   api.progress({ state: 'running', phase: 'audio', frame: 0, totalFrames })
   const audioPath = await api.beginAudio()

@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { create } from 'zustand'
 import { jumpSeconds, seek, seekToEnd, stepFrames, togglePlayback } from '@/engine/playback/session'
 import {
   addMarker,
@@ -15,70 +16,208 @@ import {
 import { redo, select, setZoom, undo, useEditor } from '@/store/editor'
 import { newProject, openProject, saveProject } from '@/store/projectActions'
 
-type Handler = (e: KeyboardEvent) => void
+export interface Command {
+  id: string
+  label: string
+  group: 'Playback' | 'Editing' | 'Timeline' | 'Project'
+  /** Combos are `[ctrl+][shift+][alt+]<key>`, lower-case; ctrl also matches ⌘ on macOS. */
+  keys: string[]
+  run(): void
+}
 
-/** Keys are `[ctrl+][shift+][alt+]<key>` with the key lower-cased. */
-const SHORTCUTS: Record<string, Handler> = {
-  ' ': togglePlayback,
-  k: () => useEditor.setState({ playing: false }),
-  l: () => (useEditor.getState().playing ? jumpSeconds(1) : togglePlayback()),
-  j: () => jumpSeconds(-1),
-  arrowleft: () => stepFrames(-1),
-  arrowright: () => stepFrames(1),
-  'shift+arrowleft': () => stepFrames(-10),
-  'shift+arrowright': () => stepFrames(10),
-  home: () => seek(0),
-  end: seekToEnd,
-  s: splitAtPlayhead,
-  'ctrl+b': splitAtPlayhead,
-  delete: () => deleteSelection(),
-  backspace: () => deleteSelection(),
-  'shift+delete': () => deleteSelection(true),
-  'ctrl+z': undo,
-  'ctrl+shift+z': redo,
-  'ctrl+y': redo,
-  'ctrl+c': copySelection,
-  'ctrl+x': cutSelection,
-  'ctrl+v': paste,
-  'ctrl+d': duplicateSelection,
-  'ctrl+a': selectAll,
-  escape: () => {
-    select([])
-    useEditor.setState({ tool: 'select' })
+export const COMMANDS: Command[] = [
+  { id: 'play', label: 'Play / pause', group: 'Playback', keys: [' '], run: togglePlayback },
+  {
+    id: 'pause',
+    label: 'Pause',
+    group: 'Playback',
+    keys: ['k'],
+    run: () => useEditor.setState({ playing: false })
   },
-  v: () => useEditor.setState({ tool: 'select' }),
-  c: () => useEditor.setState({ tool: 'razor' }),
-  i: () => setRangeEdge('in'),
-  o: () => setRangeEdge('out'),
-  'alt+x': clearRange,
-  m: addMarker,
-  n: () => useEditor.setState((s) => ({ snapping: !s.snapping })),
-  '=': () => setZoom(useEditor.getState().zoom * 1.4),
-  '+': () => setZoom(useEditor.getState().zoom * 1.4),
-  '-': () => setZoom(useEditor.getState().zoom / 1.4),
-  'ctrl+s': () => void saveProject(),
-  'ctrl+shift+s': () => void saveProject(true),
-  'ctrl+o': () => void openProject(),
-  'ctrl+n': () => void newProject()
+  {
+    id: 'forward',
+    label: 'Play / jump forward 1 s',
+    group: 'Playback',
+    keys: ['l'],
+    run: () => (useEditor.getState().playing ? jumpSeconds(1) : togglePlayback())
+  },
+  { id: 'back', label: 'Jump back 1 s', group: 'Playback', keys: ['j'], run: () => jumpSeconds(-1) },
+  {
+    id: 'prevFrame',
+    label: 'Previous frame',
+    group: 'Playback',
+    keys: ['arrowleft'],
+    run: () => stepFrames(-1)
+  },
+  { id: 'nextFrame', label: 'Next frame', group: 'Playback', keys: ['arrowright'], run: () => stepFrames(1) },
+  {
+    id: 'prev10',
+    label: 'Back 10 frames',
+    group: 'Playback',
+    keys: ['shift+arrowleft'],
+    run: () => stepFrames(-10)
+  },
+  {
+    id: 'next10',
+    label: 'Forward 10 frames',
+    group: 'Playback',
+    keys: ['shift+arrowright'],
+    run: () => stepFrames(10)
+  },
+  { id: 'start', label: 'Go to start', group: 'Playback', keys: ['home'], run: () => seek(0) },
+  { id: 'end', label: 'Go to end', group: 'Playback', keys: ['end'], run: seekToEnd },
+
+  { id: 'split', label: 'Split at playhead', group: 'Editing', keys: ['s', 'ctrl+b'], run: splitAtPlayhead },
+  {
+    id: 'delete',
+    label: 'Delete',
+    group: 'Editing',
+    keys: ['delete', 'backspace'],
+    run: () => deleteSelection()
+  },
+  {
+    id: 'rippleDelete',
+    label: 'Ripple delete',
+    group: 'Editing',
+    keys: ['shift+delete'],
+    run: () => deleteSelection(true)
+  },
+  { id: 'undo', label: 'Undo', group: 'Editing', keys: ['ctrl+z'], run: undo },
+  { id: 'redo', label: 'Redo', group: 'Editing', keys: ['ctrl+shift+z', 'ctrl+y'], run: redo },
+  { id: 'copy', label: 'Copy', group: 'Editing', keys: ['ctrl+c'], run: copySelection },
+  { id: 'cut', label: 'Cut', group: 'Editing', keys: ['ctrl+x'], run: cutSelection },
+  { id: 'paste', label: 'Paste at playhead', group: 'Editing', keys: ['ctrl+v'], run: paste },
+  { id: 'duplicate', label: 'Duplicate', group: 'Editing', keys: ['ctrl+d'], run: duplicateSelection },
+  { id: 'selectAll', label: 'Select all', group: 'Editing', keys: ['ctrl+a'], run: selectAll },
+  {
+    id: 'deselect',
+    label: 'Deselect / select tool',
+    group: 'Editing',
+    keys: ['escape'],
+    run: () => {
+      select([])
+      useEditor.setState({ tool: 'select' })
+    }
+  },
+
+  {
+    id: 'toolSelect',
+    label: 'Select tool',
+    group: 'Timeline',
+    keys: ['v'],
+    run: () => useEditor.setState({ tool: 'select' })
+  },
+  {
+    id: 'toolRazor',
+    label: 'Razor tool',
+    group: 'Timeline',
+    keys: ['c'],
+    run: () => useEditor.setState({ tool: 'razor' })
+  },
+  {
+    id: 'snapping',
+    label: 'Toggle snapping',
+    group: 'Timeline',
+    keys: ['n'],
+    run: () => useEditor.setState((s) => ({ snapping: !s.snapping }))
+  },
+  { id: 'marker', label: 'Add / remove marker', group: 'Timeline', keys: ['m'], run: addMarker },
+  { id: 'rangeIn', label: 'Set in point', group: 'Timeline', keys: ['i'], run: () => setRangeEdge('in') },
+  { id: 'rangeOut', label: 'Set out point', group: 'Timeline', keys: ['o'], run: () => setRangeEdge('out') },
+  { id: 'rangeClear', label: 'Clear in / out', group: 'Timeline', keys: ['alt+x'], run: clearRange },
+  {
+    id: 'zoomIn',
+    label: 'Zoom in',
+    group: 'Timeline',
+    keys: ['=', '+'],
+    run: () => setZoom(useEditor.getState().zoom * 1.4)
+  },
+  {
+    id: 'zoomOut',
+    label: 'Zoom out',
+    group: 'Timeline',
+    keys: ['-'],
+    run: () => setZoom(useEditor.getState().zoom / 1.4)
+  },
+
+  { id: 'save', label: 'Save', group: 'Project', keys: ['ctrl+s'], run: () => void saveProject() },
+  {
+    id: 'saveAs',
+    label: 'Save as…',
+    group: 'Project',
+    keys: ['ctrl+shift+s'],
+    run: () => void saveProject(true)
+  },
+  { id: 'open', label: 'Open…', group: 'Project', keys: ['ctrl+o'], run: () => void openProject() },
+  { id: 'new', label: 'New project', group: 'Project', keys: ['ctrl+n'], run: () => void newProject() },
+  // Bound by the App, which owns the dialog.
+  {
+    id: 'export',
+    label: 'Export…',
+    group: 'Project',
+    keys: ['ctrl+e'],
+    run: () => useShortcutState.getState().onExport?.()
+  }
+]
+
+/** User overrides (from the settings file) and the export hook. */
+export const useShortcutState = create<{
+  overrides: Record<string, string[]>
+  onExport: (() => void) | null
+}>(() => ({
+  overrides: {},
+  onExport: null
+}))
+
+export const keysFor = (command: Command, overrides: Record<string, string[]>): string[] =>
+  overrides[command.id] ?? command.keys
+
+export function comboOf(e: KeyboardEvent): string {
+  return `${e.ctrlKey || e.metaKey ? 'ctrl+' : ''}${e.shiftKey ? 'shift+' : ''}${e.altKey ? 'alt+' : ''}${e.key.toLowerCase()}`
+}
+
+/** Human-readable form of a combo, e.g. `ctrl+shift+z` → `Ctrl + Shift + Z`. */
+export function formatCombo(combo: string): string {
+  const names: Record<string, string> = {
+    ' ': 'Space',
+    arrowleft: '←',
+    arrowright: '→',
+    arrowup: '↑',
+    arrowdown: '↓',
+    escape: 'Esc',
+    delete: 'Del'
+  }
+  return combo
+    .split(/\+(?!$)/)
+    .map(
+      (part) =>
+        names[part] ?? (part.length === 1 ? part.toUpperCase() : part[0]!.toUpperCase() + part.slice(1))
+    )
+    .join(' + ')
 }
 
 const isTyping = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
   (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
 
-export function useShortcuts(extra: Record<string, Handler> = {}): void {
+export function useShortcuts(onExport: () => void): void {
+  useEffect(() => {
+    useShortcutState.setState({ onExport })
+    void window.edion.settings.get().then((s) => useShortcutState.setState({ overrides: s.shortcuts ?? {} }))
+  }, [onExport])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (isTyping(e.target) && !(e.ctrlKey || e.metaKey)) return
-      // Leave native clipboard/undo alone inside text fields.
-      if (isTyping(e.target) && ['z', 'y', 'c', 'x', 'v', 'a'].includes(e.key.toLowerCase())) return
-      const combo = `${e.ctrlKey || e.metaKey ? 'ctrl+' : ''}${e.shiftKey ? 'shift+' : ''}${e.altKey ? 'alt+' : ''}${e.key.toLowerCase()}`
-      const handler = extra[combo] ?? SHORTCUTS[combo]
-      if (!handler) return
+      const combo = comboOf(e)
+      // Text fields keep plain typing and the native clipboard/undo keys.
+      if (isTyping(e.target) && (!combo.startsWith('ctrl+') || /^ctrl\+[zycxva]$/.test(combo))) return
+      const { overrides } = useShortcutState.getState()
+      const command = COMMANDS.find((c) => keysFor(c, overrides).includes(combo))
+      if (!command) return
       e.preventDefault()
-      handler(e)
+      command.run()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [extra])
+  }, [])
 }

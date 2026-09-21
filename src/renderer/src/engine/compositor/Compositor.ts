@@ -213,6 +213,12 @@ export class Compositor {
     return [clip.size[0] + clip.strokeWidth, clip.size[1] + clip.strokeWidth]
   }
 
+  /** Drops rasterised text and shapes, e.g. once a web font finished loading. */
+  clearRasters(): void {
+    for (const cached of this.rasterTextures.values()) this.gl.deleteTexture(cached.texture)
+    this.rasterTextures.clear()
+  }
+
   forgetClip(clipId: Id): void {
     const cached = this.layerTextures.get(clipId)
     if (cached) this.gl.deleteTexture(cached.texture)

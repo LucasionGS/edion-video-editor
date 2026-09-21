@@ -19,7 +19,7 @@ fileAssociations:
 linux:
   icon: resources/icon.png
   category: AudioVideo
-  target: [AppImage, deb, pacman]
+  target: [AppImage, pacman]
   # ffprobe-static ships binaries for every OS; each build drops the foreign ones.
   files:
     - '!node_modules/ffprobe-static/bin/darwin/**'

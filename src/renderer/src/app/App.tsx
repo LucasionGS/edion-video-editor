@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { ExportDialog } from '@/features/export/ExportDialog'
 import { Inspector } from '@/features/inspector/Inspector'
@@ -21,7 +21,7 @@ export function App() {
   const [exportOpen, setExportOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   useCloseGuard()
-  useShortcuts(useMemo(() => ({ 'ctrl+e': () => setExportOpen(true) }), []))
+  useShortcuts(useCallback(() => setExportOpen(true), []))
   useWindowTitle()
   useAutosave()
   useEffect(wireExports, [])
