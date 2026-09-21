@@ -86,7 +86,10 @@ function exportProject(project: Project, name: string): string {
   const projectPath = join(workDir, `${name}.edion`)
   const output = join(workDir, `${name}.mp4`)
   writeFileSync(projectPath, serializeProject(project))
-  const run = spawnSync(electron, [root], {
+  // CI runners restrict user namespaces and npm cannot install Chromium's setuid sandbox helper, so the
+  // app would abort at startup. The pages under test are our own, so the sandbox buys nothing here.
+  const flags = process.env['CI'] ? ['--no-sandbox'] : []
+  const run = spawnSync(electron, [root, ...flags], {
     env: { ...process.env, EDION_HEADLESS_EXPORT: `${projectPath}::${output}`, EDION_DEBUG_EXPORT: '1' },
     timeout: 150_000,
     encoding: 'utf8'
