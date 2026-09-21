@@ -49,14 +49,33 @@ export function Timeline() {
     return () => observer.disconnect()
   }, [])
 
-  // Ctrl+wheel zooms around the pointer; needs a non-passive listener to block page zoom.
+  // Wheel: scroll through time. Shift+wheel (or the wheel over the track headers): scroll the tracks.
+  // Ctrl+wheel: zoom around the pointer. Needs a non-passive listener to override the browser defaults.
   useEffect(() => {
     const element = scrollRef.current!
     const onWheel = (e: WheelEvent): void => {
-      if (!e.ctrlKey && !e.metaKey) return
-      e.preventDefault()
       const x = e.clientX - element.getBoundingClientRect().left - HEADER_WIDTH
-      zoomAround(element, useEditor.getState().zoom * Math.exp(-e.deltaY * 0.0025), x)
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        return zoomAround(element, useEditor.getState().zoom * Math.exp(-e.deltaY * 0.0025), x)
+      }
+      // Line-based wheels report tiny deltas; bring them to pixels.
+      const unit =
+        e.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 40
+          : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? element.clientHeight
+            : 1
+      if (e.shiftKey) {
+        // Chromium already turns Shift+wheel into a horizontal delta; send it to the vertical axis instead.
+        e.preventDefault()
+        element.scrollTop += (e.deltaY || e.deltaX) * unit
+        return
+      }
+      // A sideways gesture (trackpad, tilt wheel) and the wheel over the track headers keep their native meaning.
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || x < 0) return
+      e.preventDefault()
+      element.scrollLeft += e.deltaY * unit
     }
     element.addEventListener('wheel', onWheel, { passive: false })
     return () => element.removeEventListener('wheel', onWheel)
