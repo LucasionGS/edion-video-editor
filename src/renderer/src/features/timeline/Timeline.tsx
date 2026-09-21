@@ -19,6 +19,9 @@ import { addAssetToTimeline, importMedia } from '@/store/projectActions'
 import { deleteSelection, splitAtPlayhead } from '@/store/commands'
 import { IconButton } from '@/ui/IconButton'
 import { MEDIA_DRAG_TYPE } from '@/features/library/MediaLibrary'
+import { seek } from '@/engine/playback/session'
+import { emptyAreaMenuItems } from '@/store/clipMenu'
+import { openContextMenu } from '@/ui/ContextMenu'
 import { Lane } from './Lane'
 import { beginMarquee } from './marquee'
 import { LaneCanvas } from './LaneCanvas'
@@ -112,6 +115,14 @@ export function Timeline() {
           ref={contentRef}
           style={{ width: HEADER_WIDTH + contentWidth }}
           className="relative min-h-full"
+          onContextMenu={(e) => {
+            // Clips and transitions open their own menus; this one is for empty lane space.
+            if ((e.target as HTMLElement).closest('[data-ruler], button, input')) return e.preventDefault()
+            if (e.clientX - scrollRef.current!.getBoundingClientRect().left < HEADER_WIDTH)
+              return e.preventDefault()
+            seek(frameFromEvent(e.clientX))
+            openContextMenu(e, emptyAreaMenuItems())
+          }}
           onPointerDown={(e) => {
             // Empty space only: clips, the ruler and the track headers handle their own presses.
             const target = e.target as HTMLElement

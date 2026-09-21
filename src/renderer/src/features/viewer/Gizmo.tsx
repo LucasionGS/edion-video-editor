@@ -5,6 +5,8 @@ import { naturalSize } from '@/engine/layerSize'
 import { beginTransaction, commitTransaction, rollbackTransaction, select, useEditor } from '@/store/editor'
 import { editClips, localFrame } from '@/store/clipEdits'
 import { startDrag } from '@/features/timeline/drag'
+import { clipMenuItems, selectForMenu } from '@/store/clipMenu'
+import { openContextMenu } from '@/ui/ContextMenu'
 
 const SNAP_PIXELS = 7
 const HANDLES = [
@@ -171,6 +173,14 @@ export function Gizmo({ scale: k, width, height }: Props) {
     <div
       data-gizmo-stage
       className="absolute inset-0 overflow-visible"
+      onContextMenu={(e) => {
+        if (playing) return e.preventDefault()
+        const rect = e.currentTarget.getBoundingClientRect()
+        const hit = hitTest(project, playhead, (e.clientX - rect.left) / k, (e.clientY - rect.top) / k)
+        if (hit) selectForMenu(hit.id)
+        else select([])
+        openContextMenu(e, clipMenuItems())
+      }}
       onPointerDown={(e) => {
         if (e.button !== 0 || playing) return
         const rect = e.currentTarget.getBoundingClientRect()

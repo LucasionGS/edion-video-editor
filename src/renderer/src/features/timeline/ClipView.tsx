@@ -1,7 +1,9 @@
 import { memo } from 'react'
 import { AudioLines, Captions, Film, ImageIcon, Shapes, Type } from 'lucide-react'
 import type { Clip } from '@core/index'
+import { clipMenuItems, selectForMenu } from '@/store/clipMenu'
 import { useEditor } from '@/store/editor'
+import { openContextMenu } from '@/ui/ContextMenu'
 import { KeyframeMarkers } from './KeyframeMarkers'
 import { beginClipMove, beginClipTrim, razorAt } from './clipDrag'
 import { useTimelineView } from './view'
@@ -43,6 +45,12 @@ export const ClipView = memo(function ClipView({ clip, zoom, height, selected, l
         width,
         height: height - 4,
         background: `color-mix(in srgb, ${missing ? 'var(--color-danger)' : color} ${selected ? 55 : 38}%, var(--color-bg))`
+      }}
+      onContextMenu={(e) => {
+        e.stopPropagation()
+        if (locked) return e.preventDefault()
+        selectForMenu(clip.id)
+        openContextMenu(e, clipMenuItems())
       }}
       onPointerDown={(e) => {
         if (e.button !== 0 || locked) return

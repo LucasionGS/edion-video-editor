@@ -1,6 +1,8 @@
 import { Blend } from 'lucide-react'
 import type { Track, Transition } from '@core/index'
-import { selectTransition, useEditor } from '@/store/editor'
+import { removeTransition } from '@core/index'
+import { edit, selectTransition, useEditor } from '@/store/editor'
+import { openContextMenu } from '@/ui/ContextMenu'
 
 /** The marker drawn over a cut that has a transition; its width shows the transition's length. */
 export function TransitionBadge({
@@ -28,6 +30,20 @@ export function TransitionBadge({
       onPointerDown={(e) => {
         e.stopPropagation()
         selectTransition(transition.id)
+      }}
+      onContextMenu={(e) => {
+        e.stopPropagation()
+        selectTransition(transition.id)
+        openContextMenu(e, [
+          {
+            label: 'Remove transition',
+            danger: true,
+            onSelect: () => {
+              edit('Remove transition', (d) => removeTransition(d, transition.id))
+              selectTransition(null)
+            }
+          }
+        ])
       }}
     >
       <Blend size={11} />

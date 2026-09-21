@@ -12,6 +12,7 @@ import { wireExports } from '@/store/exports'
 import { autosave, confirmDiscard, openProject } from '@/store/projectActions'
 import { activeJob, useExports } from '@/store/exports'
 import { confirm } from '@/store/feedback'
+import { ContextMenuHost } from '@/ui/ContextMenu'
 import { ConfirmDialog, Toasts } from '@/ui/Feedback'
 import { PanelFrame } from '@/ui/Panel'
 import { useShortcuts } from './shortcuts'
@@ -60,6 +61,7 @@ export function App() {
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       <Welcome />
+      <ContextMenuHost />
       <Toasts />
       <ConfirmDialog />
     </div>
