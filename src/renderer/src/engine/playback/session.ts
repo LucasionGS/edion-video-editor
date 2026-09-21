@@ -1,5 +1,6 @@
 import { projectDuration } from '@core/index'
 import { setPlayhead, useEditor } from '@/store/editor'
+import { editorProxies, onProxyReady } from '../proxies'
 import { Player } from './Player'
 
 /** The single live Player, bound to the viewer canvas, plus the glue that keeps it in step with the store. */
@@ -9,12 +10,16 @@ let unsubscribe: (() => void) | null = null
 export const getPlayer = (): Player | null => player
 
 export function attachPlayer(canvas: HTMLCanvasElement): () => void {
-  player = new Player(canvas, window.edion, {
-    getProject: () => useEditor.getState().project,
-    getPlayhead: () => useEditor.getState().playhead,
-    onFrame: (frame) => useEditor.setState({ playhead: frame }),
-    onStop: () => useEditor.setState({ playing: false })
-  })
+  player = new Player(
+    canvas,
+    { media: window.edion.media, library: window.edion.library, proxies: editorProxies },
+    {
+      getProject: () => useEditor.getState().project,
+      getPlayhead: () => useEditor.getState().playhead,
+      onFrame: (frame) => useEditor.setState({ playhead: frame }),
+      onStop: () => useEditor.setState({ playing: false })
+    }
+  )
   const current = player
   unsubscribe = useEditor.subscribe((state, previous) => {
     if (state.project !== previous.project) current.projectChanged()
@@ -24,7 +29,9 @@ export function attachPlayer(canvas: HTMLCanvasElement): () => void {
       else current.pause()
     }
   })
+  const offProxy = onProxyReady((path) => current.renderer.resetMedia(path))
   return () => {
+    offProxy()
     unsubscribe?.()
     current.dispose()
     if (player === current) player = null

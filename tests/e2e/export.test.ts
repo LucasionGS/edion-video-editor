@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -92,6 +92,8 @@ function exportProject(project: Project, name: string): string {
     encoding: 'utf8'
   })
   if (run.status !== 0) throw new Error(`export failed (${run.status})\n${run.stdout}\n${run.stderr}`)
+  // EDION_E2E_KEEP=<dir> keeps the rendered files for inspection.
+  if (process.env['EDION_E2E_KEEP']) copyFileSync(output, join(process.env['EDION_E2E_KEEP'], `${name}.mp4`))
   return output
 }
 
@@ -133,7 +135,7 @@ function pixel(path: string, frame: number, x: number, y: number): [number, numb
 function psnr(a: string, b: string): number {
   const { stderr } = spawnSync(
     'ffmpeg',
-    ['-hide_banner', '-i', a, '-i', b, '-lavfi', '[0:v][1:v]psnr', '-f', 'null', '-'],
+    ['-hide_banner', '-i', a, '-i', b, '-lavfi', '[0:v][1:v]psnr=shortest=1', '-f', 'null', '-'],
     { encoding: 'utf8' }
   )
   return Number(stderr.match(/average:([\d.]+)/)?.[1] ?? 0)
@@ -157,6 +159,36 @@ describe('export', () => {
     expect(audio?.['codec_name']).toBe('aac')
     expect(Math.abs(Number(audio?.['duration']) - SECONDS)).toBeLessThan(0.1)
     expect(psnr(output, fixture)).toBeGreaterThan(35)
+  })
+
+  it('exports sources Chromium cannot decode through an intermediate', () => {
+    const prores = join(workDir, 'prores.mov')
+    execFileSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-i',
+      fixture,
+      '-t',
+      '1',
+      '-c:v',
+      'prores_ks',
+      '-profile:v',
+      '0',
+      '-c:a',
+      'pcm_s16le',
+      prores
+    ])
+    const { project, asset, clip } = baseProject()
+    asset.path = prores
+    asset.duration = 1
+    clip.duration = FPS
+    const output = exportProject(project, 'prores')
+    const { video, audio } = probe(output)
+    expect(Number(video['nb_read_frames'])).toBe(FPS)
+    expect(audio?.['codec_name']).toBe('aac')
+    expect(psnr(output, fixture)).toBeGreaterThan(30)
   })
 
   it('renders cuts, transitions, overlays and effects', () => {

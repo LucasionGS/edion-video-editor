@@ -11,6 +11,7 @@ import {
 } from '@core/index'
 import type { Id, MediaAsset, Project } from '@core/index'
 import type { ImportedMedia } from '@shared/ipc'
+import { benefitsFromProxy, requestProxy } from '@/engine/proxies'
 import { edit, isDirty, loadProject, markSaved, select, useEditor } from './editor'
 import { confirm, toast } from './feedback'
 
@@ -42,6 +43,7 @@ async function adopt(project: Project, path: string | null, dirty = false): Prom
   await Promise.all(project.media.filter((_, i) => found[i]).map((m) => window.edion.library.fileUrl(m.path)))
   const missing = project.media.filter((_, i) => !found[i]).map((m) => m.id)
   useEditor.setState({ missingMedia: missing })
+  void prepareProxies(project.media.filter((_, i) => found[i]))
   if (missing.length > 0) {
     toast(
       `${missing.length} media file${missing.length > 1 ? 's are' : ' is'} missing. Relink from the library.`,
@@ -156,6 +158,7 @@ export async function importMedia(paths: string[]): Promise<MediaAsset[]> {
       }
     })
   }
+  void prepareProxies(added)
   const all = new Map(get().project.media.map((m) => [m.path, m]))
   return paths.flatMap((p) => all.get(p) ?? [])
 }
@@ -187,4 +190,11 @@ export async function relinkMedia(mediaId: Id): Promise<void> {
     if (target) Object.assign(target, { ...toAsset(result), id: mediaId, name: target.name })
   })
   useEditor.setState({ missingMedia: get().missingMedia.filter((id) => id !== mediaId) })
+}
+
+/** Starts background proxy generation for heavy footage, when enabled in the settings. */
+export async function prepareProxies(assets: readonly MediaAsset[]): Promise<void> {
+  const heavy = assets.filter(benefitsFromProxy)
+  if (heavy.length === 0 || !(await window.edion.settings.get()).proxiesEnabled) return
+  for (const asset of heavy) void requestProxy(asset.path)
 }

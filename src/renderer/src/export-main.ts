@@ -26,7 +26,9 @@ async function run(): Promise<void> {
   // yuv420p needs even dimensions.
   const width = settings.width & ~1
   const height = settings.height & ~1
-  const renderer = new SceneRenderer(new OffscreenCanvas(width, height), api, true)
+  // Sources Chromium cannot decode are exported through a full-resolution, near-lossless intermediate.
+  const proxies = { ready: () => null, require: (path: string) => api.library.proxy(path, 'full') }
+  const renderer = new SceneRenderer(new OffscreenCanvas(width, height), { ...api, proxies }, true)
   renderer.compositor.setSize(project.settings.width, project.settings.height, width / project.settings.width)
   // setSize rounds from the project size; force the exact encoder dimensions.
   renderer.compositor.canvas.width = width

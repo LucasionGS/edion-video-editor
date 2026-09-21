@@ -4,12 +4,13 @@ import type { EdionApi } from '@shared/ipc'
 import { Compositor, type FrameSource } from './compositor/Compositor'
 import { ClipVideoDecoder } from './decode/ClipVideoDecoder'
 import { ImageStore } from './decode/ImageStore'
-import { MediaPool } from './decode/MediaPool'
+import { MediaPool, type ProxyProvider } from './decode/MediaPool'
 
 /** The slice of the preload API the engine needs; both the editor and the export window provide it. */
 export interface EngineApi {
   media: EdionApi['media']
   library: Pick<EdionApi['library'], 'fileUrl'>
+  proxies?: ProxyProvider
 }
 
 const MAX_IDLE_DECODERS = 4
@@ -39,7 +40,7 @@ export class SceneRenderer implements FrameSource {
 
   constructor(canvas: HTMLCanvasElement | OffscreenCanvas, api: EngineApi, flipOutput = false) {
     this.compositor = new Compositor(canvas, flipOutput)
-    this.pool = new MediaPool(api.media)
+    this.pool = new MediaPool(api.media, api.proxies)
     this.images = new ImageStore(api.library, () => this.onContentReady?.())
   }
 
@@ -142,6 +143,13 @@ export class SceneRenderer implements FrameSource {
       .filter(([, s]) => s.lastUsed < this.tick)
       .sort((a, b) => b[1].lastUsed - a[1].lastUsed)
     for (const [clipId] of idle.slice(MAX_IDLE_DECODERS)) this.release(clipId)
+  }
+
+  /** Drops everything opened for a media file, so it is reopened (e.g. from its new proxy) on the next draw. */
+  resetMedia(path: string): void {
+    for (const [clipId, slot] of [...this.slots.entries()]) if (slot.path === path) this.release(clipId)
+    this.pool.forget(path)
+    this.onContentReady?.()
   }
 
   dispose(): void {

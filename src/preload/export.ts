@@ -36,7 +36,10 @@ async function cleanup(): Promise<void> {
 
 const api: EdionExportApi = {
   media: mediaApi,
-  library: { fileUrl: (path) => ipcRenderer.invoke(LIBRARY_IPC.fileUrl, path) },
+  library: {
+    fileUrl: (path) => ipcRenderer.invoke(LIBRARY_IPC.fileUrl, path),
+    proxy: (path, mode) => ipcRenderer.invoke(LIBRARY_IPC.proxy, path, mode)
+  },
   getJob: () => ipcRenderer.invoke(EXPORT_IPC.getJob, jobId),
 
   async beginAudio() {

@@ -55,7 +55,11 @@ const api: EdionApi = {
     relink: (name) => ipcRenderer.invoke(LIBRARY_IPC.relink, name),
     fileUrl: (path) => ipcRenderer.invoke(LIBRARY_IPC.fileUrl, path),
     filmstrip: (path) => ipcRenderer.invoke(LIBRARY_IPC.filmstrip, path),
-    peaks: (path) => ipcRenderer.invoke(LIBRARY_IPC.peaks, path)
+    peaks: (path) => ipcRenderer.invoke(LIBRARY_IPC.peaks, path),
+    proxy: (path, mode) => ipcRenderer.invoke(LIBRARY_IPC.proxy, path, mode),
+    saveRecording: (data, projectPath) => ipcRenderer.invoke(LIBRARY_IPC.saveRecording, data, projectPath),
+    cacheSize: () => ipcRenderer.invoke(LIBRARY_IPC.cacheSize),
+    clearCache: () => ipcRenderer.invoke(LIBRARY_IPC.clearCache)
   },
   settings: {
     get: () => ipcRenderer.invoke(SETTINGS_IPC.get),

@@ -136,7 +136,7 @@ export interface EncoderStart {
 /** API exposed on `window.edionExport` in the hidden export window. */
 export interface EdionExportApi {
   media: EdionApi['media']
-  library: Pick<EdionMediaLibraryApi, 'fileUrl'>
+  library: Pick<EdionMediaLibraryApi, 'fileUrl' | 'proxy'>
   /** The request plus encoders to try, in order (the last one is always software). */
   getJob(): Promise<{ request: ExportRequest; encoders: ResolvedEncoder[] }>
   beginAudio(): Promise<string>
@@ -249,7 +249,19 @@ export interface EdionMediaLibraryApi {
   fileUrl(path: string): Promise<string>
   filmstrip(path: string): Promise<Filmstrip | null>
   peaks(path: string): Promise<Peaks | null>
+  /**
+   * Path of an easily decodable stand-in for a media file, generating it on first use.
+   * 'preview' is small and fast; 'full' keeps the resolution and is near-lossless (used when exporting
+   * sources the app cannot decode itself).
+   */
+  proxy(path: string, mode: ProxyMode): Promise<string | null>
+  /** Saves a microphone recording next to the project (or in app data) and returns the audio file's path. */
+  saveRecording(data: Uint8Array, projectPath: string | null): Promise<string>
+  cacheSize(): Promise<number>
+  clearCache(): Promise<void>
 }
+
+export type ProxyMode = 'preview' | 'full'
 
 export interface EdionSettingsApi {
   get(): Promise<AppSettings>
@@ -275,7 +287,11 @@ export const LIBRARY_IPC = {
   relink: 'library:relink',
   fileUrl: 'library:fileUrl',
   filmstrip: 'library:filmstrip',
-  peaks: 'library:peaks'
+  peaks: 'library:peaks',
+  proxy: 'library:proxy',
+  saveRecording: 'library:saveRecording',
+  cacheSize: 'library:cacheSize',
+  clearCache: 'library:clearCache'
 } as const
 
 export const SETTINGS_IPC = { get: 'settings:get', update: 'settings:update' } as const
