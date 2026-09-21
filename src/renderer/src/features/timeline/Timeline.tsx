@@ -14,13 +14,13 @@ import {
   ZoomOut
 } from 'lucide-react'
 import { addTrack, projectDuration } from '@core/index'
-import { seek } from '@/engine/playback/session'
-import { edit, MAX_ZOOM, MIN_ZOOM, redo, select, setZoom, undo, useEditor } from '@/store/editor'
+import { edit, MAX_ZOOM, MIN_ZOOM, redo, setZoom, undo, useEditor } from '@/store/editor'
 import { addAssetToTimeline, importMedia } from '@/store/projectActions'
 import { deleteSelection, splitAtPlayhead } from '@/store/commands'
 import { IconButton } from '@/ui/IconButton'
 import { MEDIA_DRAG_TYPE } from '@/features/library/MediaLibrary'
 import { Lane } from './Lane'
+import { beginMarquee } from './marquee'
 import { LaneCanvas } from './LaneCanvas'
 import { Ruler } from './Ruler'
 import { TrackHeader } from './TrackHeader'
@@ -28,6 +28,7 @@ import { HEADER_WIDTH, RULER_HEIGHT, useTimelineView } from './view'
 
 export function Timeline() {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const tracks = useEditor((s) => s.project.tracks)
   const zoom = useEditor((s) => s.zoom)
   const duration = useEditor((s) => projectDuration(s.project))
@@ -107,8 +108,21 @@ export function Timeline() {
         }}
         onDrop={(e) => void onDrop(e)}
       >
-        <div style={{ width: HEADER_WIDTH + contentWidth }} className="relative min-h-full">
+        <div
+          ref={contentRef}
+          style={{ width: HEADER_WIDTH + contentWidth }}
+          className="relative min-h-full"
+          onPointerDown={(e) => {
+            // Empty space only: clips, the ruler and the track headers handle their own presses.
+            const target = e.target as HTMLElement
+            if (e.button !== 0 || target.closest('[data-clip-id], [data-ruler], button, input')) return
+            if (e.clientX - scrollRef.current!.getBoundingClientRect().left < HEADER_WIDTH) return
+            if (useEditor.getState().tool === 'razor') return
+            beginMarquee(e, scrollRef.current!, contentRef.current!, frameFromEvent(e.clientX))
+          }}
+        >
           <div
+            data-ruler
             className="sticky top-0 z-30 flex border-b border-line bg-surface"
             style={{ height: RULER_HEIGHT }}
           >
@@ -120,15 +134,7 @@ export function Timeline() {
               <Ruler />
             </div>
           </div>
-          <div
-            onPointerDown={(e) => {
-              if (e.button !== 0 || (e.target as HTMLElement).closest('[data-clip-id]')) return
-              const overHeader = e.clientX - scrollRef.current!.getBoundingClientRect().left < HEADER_WIDTH
-              if (overHeader) return
-              select([])
-              seek(frameFromEvent(e.clientX))
-            }}
-          >
+          <div>
             {tracks.map((track) => (
               <div key={track.id} className="flex">
                 <TrackHeader track={track} />
@@ -161,9 +167,16 @@ function Guides() {
   const zoom = useEditor((s) => s.zoom)
   const snapGuide = useTimelineView((s) => s.snapGuide)
   const razorFrame = useTimelineView((s) => s.razorFrame)
+  const marquee = useTimelineView((s) => s.marquee)
   const line = (frame: number): React.CSSProperties => ({ left: HEADER_WIDTH + frame * zoom })
   return (
     <>
+      {marquee && (
+        <div
+          className="pointer-events-none absolute z-[26] rounded-[3px] border border-accent bg-accent-soft"
+          style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
+        />
+      )}
       {snapGuide !== null && (
         <div
           className="pointer-events-none absolute inset-y-0 z-[25] w-px bg-accent"

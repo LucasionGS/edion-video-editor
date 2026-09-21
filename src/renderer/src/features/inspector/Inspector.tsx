@@ -179,27 +179,23 @@ function TransformSection({ clip }: { clip: VisualClip }) {
 }
 
 function CropSection({ clip }: { clip: Extract<Clip, { type: 'video' | 'image' }> }) {
-  const sides = ['left', 'top', 'right', 'bottom'] as const
+  const field = (side: 'left' | 'top' | 'right' | 'bottom') => (
+    <NumberInput
+      key={side}
+      label={`Crop ${side}`}
+      value={clip.crop[side] * 100}
+      min={0}
+      max={95}
+      precision={0}
+      suffix="%"
+      {...scrub}
+      onChange={(v) => editClips([clip.id], 'Crop', (c) => 'crop' in c && void (c.crop[side] = v / 100))}
+    />
+  )
   return (
     <Section title="Crop">
-      <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-        {sides.map((side) => (
-          <Row key={side} label={side[0]!.toUpperCase() + side.slice(1)}>
-            <NumberInput
-              label={`Crop ${side}`}
-              value={clip.crop[side] * 100}
-              min={0}
-              max={95}
-              precision={0}
-              suffix="%"
-              {...scrub}
-              onChange={(v) =>
-                editClips([clip.id], 'Crop', (c) => 'crop' in c && void (c.crop[side] = v / 100))
-              }
-            />
-          </Row>
-        ))}
-      </div>
+      <Row label="Left · Right">{[field('left'), field('right')]}</Row>
+      <Row label="Top · Bottom">{[field('top'), field('bottom')]}</Row>
     </Section>
   )
 }

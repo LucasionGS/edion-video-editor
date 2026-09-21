@@ -12,6 +12,8 @@ interface TimelineView {
   snapGuide: number | null
   /** Frame under the razor tool, for its guide line. */
   razorFrame: number | null
+  /** Rubber-band selection rectangle, in timeline content coordinates. */
+  marquee: { left: number; top: number; width: number; height: number } | null
   /** Bumped when a filmstrip or waveform finished loading, to repaint lanes. */
   visualsVersion: number
 }
@@ -21,6 +23,7 @@ export const useTimelineView = create<TimelineView>(() => ({
   viewportWidth: 800,
   snapGuide: null,
   razorFrame: null,
+  marquee: null,
   visualsVersion: 0
 }))
 
