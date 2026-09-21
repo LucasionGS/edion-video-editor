@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Draft } from 'immer'
-import { createProject, DEFAULT_SNAP_SETTINGS, History } from '@core/index'
-import type { Clip, Id, Project, SnapSettings } from '@core/index'
+import { createProject, DEFAULT_SNAP_SETTINGS, History, TIME_DISPLAYS } from '@core/index'
+import type { Clip, Id, Project, SnapSettings, TimeDisplay } from '@core/index'
 
 export type Tool = 'select' | 'razor'
 
@@ -23,6 +23,7 @@ export interface EditorState {
   tool: Tool
   snapping: boolean
   snap: SnapSettings
+  timeDisplay: TimeDisplay
   ripple: boolean
   /** Timeline zoom in pixels per frame. */
   zoom: number
@@ -46,6 +47,7 @@ export const useEditor = create<EditorState>(() => ({
   tool: 'select',
   snapping: true,
   snap: DEFAULT_SNAP_SETTINGS,
+  timeDisplay: 'time',
   ripple: false,
   zoom: 2,
   clipboard: [],
@@ -135,7 +137,16 @@ export function setSnapSettings(patch: Partial<SnapSettings>): void {
   void window.edion.settings.update({ snapping: { ...snap } })
 }
 
+export function setTimeDisplay(timeDisplay: TimeDisplay): void {
+  set({ timeDisplay })
+  void window.edion.settings.update({ timeDisplay })
+}
+
+/** Restores the view preferences kept in the settings file. */
 export async function loadSnapSettings(): Promise<void> {
-  const saved = (await window.edion.settings.get()).snapping
+  const settings = await window.edion.settings.get()
+  if (TIME_DISPLAYS.some((d) => d.value === settings.timeDisplay))
+    set({ timeDisplay: settings.timeDisplay as TimeDisplay })
+  const saved = settings.snapping
   if (saved) set({ snap: { ...DEFAULT_SNAP_SETTINGS, ...(saved as Partial<SnapSettings>) } })
 }

@@ -20,3 +20,38 @@ export function fpsToRational(fps: number): string {
   }
   return Number.isInteger(fps) ? `${fps}/1` : String(fps)
 }
+
+/**
+ * How positions are shown. 'time' is wall-clock (`1:05.400`); 'timecode' is the editor's classic
+ * minutes:seconds:frames (`01:05:24`, where the last field counts frames, not seconds); 'frames' is the raw frame number.
+ */
+export type TimeDisplay = 'time' | 'timecode' | 'frames'
+
+export const TIME_DISPLAYS: ReadonlyArray<{ value: TimeDisplay; label: string }> = [
+  { value: 'time', label: 'Time (min:sec.ms)' },
+  { value: 'timecode', label: 'Timecode (min:sec:frame)' },
+  { value: 'frames', label: 'Frame number' }
+]
+
+/** `M:SS` with `decimals` fractional digits (hours added when needed). */
+export function formatClock(seconds: number, decimals = 0): string {
+  const scale = 10 ** decimals
+  const total = Math.max(0, Math.round(seconds * scale)) / scale
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor(total / 60) % 60
+  const rest = (total % 60).toFixed(decimals).padStart(decimals ? decimals + 3 : 2, '0')
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, '0')}:${rest}` : `${minutes}:${rest}`
+}
+
+export function formatPosition(frame: number, fps: number, display: TimeDisplay): string {
+  if (display === 'frames') return String(Math.max(0, Math.round(frame)))
+  if (display === 'timecode') return formatTimecode(frame, fps)
+  return formatClock(frame / fps, 3)
+}
+
+/** Ruler label: like `formatPosition`, but without digits that are zero on every tick. */
+export function formatRulerLabel(frame: number, fps: number, display: TimeDisplay): string {
+  if (display !== 'time') return formatPosition(frame, fps, display)
+  const clock = formatClock(frame / fps, 3)
+  return clock.includes('.') ? clock.replace(/\.?0+$/, '') : clock
+}

@@ -10,6 +10,7 @@ const DEFAULTS: AppSettings = {
   proxiesEnabled: true,
   shortcuts: {},
   snapping: null,
+  timeDisplay: 'time',
   recents: []
 }
 const MAX_RECENTS = 12

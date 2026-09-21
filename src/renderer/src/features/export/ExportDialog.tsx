@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, CircleAlert, FolderSearch, Loader2, X } from 'lucide-react'
-import { formatTimecode, projectDuration, serializeProject } from '@core/index'
+import { formatClock, projectDuration, serializeProject } from '@core/index'
 import type { EncoderInfo, ExportJobState, ExportQuality } from '@shared/ipc'
 import { useEditor } from '@/store/editor'
 import { useExports } from '@/store/exports'
@@ -127,7 +127,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         )}
         <div className="mt-2 flex items-center justify-between border-t border-line pt-3">
           <span className="text-2xs text-faint">
-            {formatTimecode(frames, fps)} · {frames} frames · {Number(fps.toFixed(3))} fps
+            {formatClock(frames / fps, 2)} · {frames} frames · {Number(fps.toFixed(3))} fps
           </span>
           <Button variant="primary" disabled={frames <= 0} onClick={() => void start()}>
             Export…

@@ -46,3 +46,18 @@ describe('snap', () => {
     expect(snap([31], [], 3, 29.97)?.point).toBe(30)
   })
 })
+
+describe('time display', () => {
+  it('shows wall-clock time with milliseconds', async () => {
+    const { formatPosition, formatClock, formatRulerLabel } = await import('@core/index')
+    expect(formatPosition(24, 60, 'time')).toBe('0:00.400')
+    expect(formatPosition(24, 60, 'timecode')).toBe('00:00:24')
+    expect(formatPosition(24, 60, 'frames')).toBe('24')
+    expect(formatPosition(60 * 365 + 9, 60, 'time')).toBe('6:05.150')
+    expect(formatClock(3725)).toBe('1:02:05')
+    expect(formatClock(59.9996, 3)).toBe('1:00.000')
+    expect(formatRulerLabel(30, 60, 'time')).toBe('0:00.5')
+    expect(formatRulerLabel(120, 60, 'time')).toBe('0:02')
+    expect(formatRulerLabel(600, 60, 'time')).toBe('0:10')
+  })
+})

@@ -200,6 +200,8 @@ export interface AppSettings {
   shortcuts: Record<string, string[]>
   /** Timeline snapping preferences (a `SnapSettings` from the core); null until changed. */
   snapping: Record<string, number | boolean> | null
+  /** How positions are displayed: 'time' | 'timecode' | 'frames'. */
+  timeDisplay: string
   recents: RecentProject[]
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronFirst, ChevronLast, Pause, Play, StepBack, StepForward, Volume2, VolumeX } from 'lucide-react'
-import { formatTimecode, projectDuration } from '@core/index'
+import { formatClock, formatPosition, projectDuration, TIME_DISPLAYS } from '@core/index'
 import {
   attachPlayer,
   getPlayer,
@@ -9,7 +9,7 @@ import {
   stepFrames,
   togglePlayback
 } from '@/engine/playback/session'
-import { useEditor } from '@/store/editor'
+import { setTimeDisplay, useEditor } from '@/store/editor'
 import { IconButton } from '@/ui/IconButton'
 import { AudioMeter } from './AudioMeter'
 import { Gizmo } from './Gizmo'
@@ -129,10 +129,27 @@ export function Viewer() {
 function Timecode({ fps }: { fps: number }) {
   const playhead = useEditor((s) => s.playhead)
   const duration = useEditor((s) => projectDuration(s.project))
+  const display = useEditor((s) => s.timeDisplay)
+  const index = TIME_DISPLAYS.findIndex((d) => d.value === display)
+  const next = TIME_DISPLAYS[(index + 1) % TIME_DISPLAYS.length]!
+  const second = Math.floor(playhead / fps)
   return (
-    <div className="font-mono text-xs tabular-nums">
-      <span className="text-fg">{formatTimecode(playhead, fps)}</span>
-      <span className="text-faint"> / {formatTimecode(duration, fps)}</span>
-    </div>
+    <button
+      type="button"
+      className="flex items-baseline gap-1.5 justify-self-start rounded px-1 py-0.5 font-mono text-xs tabular-nums hover:bg-hover"
+      onClick={() => setTimeDisplay(next.value)}
+      title={`Showing: ${TIME_DISPLAYS[index]?.label}. Click for: ${next.label}`}
+    >
+      <span className="text-fg">{formatPosition(playhead, fps, display)}</span>
+      <span className="text-faint">/ {formatPosition(duration, fps, display)}</span>
+      {/* The other two readings of the same position, so the units are never ambiguous. */}
+      <span className="text-2xs text-faint">
+        {display === 'time'
+          ? `frame ${playhead - Math.round(second * fps)} of ${Math.round(fps)}`
+          : display === 'timecode'
+            ? 'min:sec:frame'
+            : formatClock(playhead / fps, 3)}
+      </span>
+    </button>
   )
 }

@@ -5,7 +5,7 @@ import {
   createCaptionClip,
   cuesToClips,
   deleteClips,
-  formatTimecode,
+  formatPosition,
   insertClip,
   isFree,
   parseSubtitles,
@@ -69,6 +69,7 @@ export function CaptionsLibrary() {
   const clips = [...useEditor(useShallow(captionClips))].sort((a, b) => a.start - b.start)
   const fps = useEditor((s) => s.project.settings.fps)
   const selection = useEditor((s) => s.selection)
+  const display = useEditor((s) => s.timeDisplay)
 
   return (
     <div className="flex h-full flex-col">
@@ -108,7 +109,7 @@ export function CaptionsLibrary() {
               }}
             >
               <span className="shrink-0 pt-0.5 font-mono text-[10px] text-faint">
-                {formatTimecode(clip.start, fps)}
+                {formatPosition(clip.start, fps, display)}
               </span>
               <textarea
                 aria-label="Caption text"

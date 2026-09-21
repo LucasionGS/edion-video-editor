@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { formatTimecode } from '@core/index'
+import { formatRulerLabel } from '@core/index'
 import { seek } from '@/engine/playback/session'
 import { useEditor } from '@/store/editor'
 import { startDrag } from './drag'
@@ -11,6 +11,7 @@ export function Ruler() {
   const fps = useEditor((s) => s.project.settings.fps)
   const markers = useEditor((s) => s.project.markers)
   const range = useEditor((s) => s.project.range)
+  const display = useEditor((s) => s.timeDisplay)
   const scrollLeft = useTimelineView((s) => s.scrollLeft)
   const width = useTimelineView((s) => s.viewportWidth)
 
@@ -44,7 +45,7 @@ export function Ruler() {
       ctx.stroke()
       if (isMajor) {
         ctx.fillStyle = color('--color-muted')
-        ctx.fillText(formatTimecode(frame, fps), x + 4, 3)
+        ctx.fillText(formatRulerLabel(frame, fps, display), x + 4, 3)
       }
     }
     for (const marker of markers) {
@@ -56,7 +57,7 @@ export function Ruler() {
       ctx.lineTo(x, RULER_HEIGHT - 1)
       ctx.fill()
     }
-  }, [zoom, fps, scrollLeft, width, markers, range])
+  }, [zoom, fps, scrollLeft, width, markers, range, display])
 
   return (
     <canvas

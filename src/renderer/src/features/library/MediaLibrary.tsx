@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, FileAudio, ImageIcon, Plus, Trash2, Upload } from 'lucide-react'
-import { formatTimecode, removeMedia } from '@core/index'
+import { formatClock, removeMedia } from '@core/index'
 import type { MediaAsset } from '@core/index'
 import type { Filmstrip } from '@shared/ipc'
 import { edit, useEditor } from '@/store/editor'
@@ -62,7 +62,6 @@ export function MediaLibrary() {
 }
 
 function MediaCard({ asset, missing }: { asset: MediaAsset; missing: boolean }) {
-  const fps = useEditor((s) => s.project.settings.fps)
   const thumbnail = useThumbnail(asset, missing)
   const proxy = useProxies((s) => s.byPath[asset.path])
 
@@ -119,7 +118,7 @@ function MediaCard({ asset, missing }: { asset: MediaAsset; missing: boolean }) 
         )}
         {asset.duration > 0 && (
           <span className="absolute right-1 bottom-1 rounded bg-black/70 px-1 font-mono text-[10px] text-white">
-            {formatTimecode(Math.round(asset.duration * fps), fps)}
+            {formatClock(asset.duration)}
           </span>
         )}
         <div className="absolute inset-0 hidden items-center justify-center gap-1 bg-black/55 group-hover:flex">
