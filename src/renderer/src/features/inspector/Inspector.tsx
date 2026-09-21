@@ -13,6 +13,8 @@ import {
   Unlink
 } from 'lucide-react'
 import {
+  ANIMATION_PRESETS,
+  applyAnimationPreset,
   defaultTransform,
   detachAudio,
   EFFECTS,
@@ -23,7 +25,7 @@ import {
   newId,
   setClipSpeed
 } from '@core/index'
-import type { BlendMode, Clip, TextStyle, VisualClip } from '@core/index'
+import type { AnimationPreset, BlendMode, Clip, TextStyle, VisualClip } from '@core/index'
 import { edit, select, useEditor } from '@/store/editor'
 import { editClips } from '@/store/clipEdits'
 import { Button } from '@/ui/Button'
@@ -35,16 +37,19 @@ import { EmptyState } from '@/ui/Panel'
 import { AnimNumberRow, AnimVec2Row, Row, scrub, Section } from './anim'
 import { useFontFamilies } from './fonts'
 import { ProjectSettings } from './ProjectSettings'
+import { TransitionInspector } from './TransitionInspector'
 
 const BLEND_MODES: BlendMode[] = ['normal', 'add', 'multiply', 'screen', 'overlay', 'darken', 'lighten']
 const percent = { display: 100, suffix: '%', step: 1, precision: 0 }
 
 export function Inspector() {
   const selection = useEditor((s) => s.selection)
+  const selectedTransition = useEditor((s) => s.selectedTransition)
   const clip = useEditor((s) =>
     s.selection.length === 1 ? findClip(s.project, s.selection[0]!)?.clip : undefined
   )
 
+  if (selectedTransition) return <TransitionInspector id={selectedTransition} />
   if (selection.length === 0) return <ProjectSettings />
   if (!clip) {
     return (
@@ -64,6 +69,7 @@ export function Inspector() {
       {(clip.type === 'video' || clip.type === 'image') && <CropSection clip={clip} />}
       {(clip.type === 'video' || clip.type === 'audio') && <SpeedSection clip={clip} />}
       {isAudibleClip(clip) && !(clip.type === 'video' && clip.audioMuted) && <AudioSection clip={clip} />}
+      {isVisualClip(clip) && <AnimateSection clip={clip} />}
       {isVisualClip(clip) && <EffectsSection clip={clip} />}
     </div>
   )
@@ -651,6 +657,57 @@ function EffectsSection({ clip }: { clip: VisualClip }) {
           </div>
         )
       })}
+    </Section>
+  )
+}
+
+function AnimateSection({ clip }: { clip: VisualClip }) {
+  const [presets, setPresets] = useState<{ in: AnimationPreset; out: AnimationPreset }>({
+    in: 'none',
+    out: 'none'
+  })
+  const [seconds, setSeconds] = useState(0.5)
+  const apply = (edge: 'in' | 'out', preset: AnimationPreset): void => {
+    setPresets((p) => ({ ...p, [edge]: preset }))
+    edit(`Animate ${edge}`, (draft) => {
+      const found = findClip(draft, clip.id)
+      if (found && isVisualClip(found.clip)) {
+        applyAnimationPreset(
+          found.clip,
+          edge,
+          preset,
+          Math.round(seconds * draft.settings.fps),
+          draft.settings
+        )
+      }
+    })
+  }
+  return (
+    <Section title="Animate">
+      {(['in', 'out'] as const).map((edge) => (
+        <Row key={edge} label={edge === 'in' ? 'Entrance' : 'Exit'}>
+          <Select value={presets[edge]} onChange={(e) => apply(edge, e.target.value as AnimationPreset)}>
+            {ANIMATION_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </Select>
+        </Row>
+      ))}
+      <Row label="Length">
+        <NumberInput
+          label="Animation length"
+          value={seconds}
+          min={0.1}
+          max={5}
+          step={0.05}
+          precision={2}
+          suffix=" s"
+          onChange={setSeconds}
+        />
+      </Row>
+      <p className="text-2xs text-faint">Presets write normal keyframes you can fine-tune afterwards.</p>
     </Section>
   )
 }

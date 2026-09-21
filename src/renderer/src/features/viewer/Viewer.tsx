@@ -11,6 +11,7 @@ import {
 } from '@/engine/playback/session'
 import { useEditor } from '@/store/editor'
 import { IconButton } from '@/ui/IconButton'
+import { Gizmo } from './Gizmo'
 
 const QUALITIES = [
   { label: 'Full', value: 1 },
@@ -63,11 +64,13 @@ export function Viewer() {
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col bg-bg">
       <div ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden">
-        <canvas
-          ref={canvasRef}
-          className="absolute rounded-sm shadow-lg shadow-black/50"
+        <div
+          className="absolute"
           style={{ left: fitted.left, top: fitted.top, width: fitted.width, height: fitted.height }}
-        />
+        >
+          <canvas ref={canvasRef} className="size-full rounded-sm shadow-lg shadow-black/50" />
+          {scale > 0 && <Gizmo scale={scale} width={fitted.width} height={fitted.height} />}
+        </div>
       </div>
       <footer className="grid h-11 shrink-0 grid-cols-3 items-center border-t border-line bg-surface px-3">
         <Timecode fps={fps} />

@@ -18,7 +18,10 @@ const api: EdionApi = {
   },
   dialog: {
     openMedia: () => ipcRenderer.invoke(IPC.dialogOpenMedia),
-    saveFile: (defaultName, extensions) => ipcRenderer.invoke(IPC.dialogSaveFile, defaultName, extensions)
+    saveFile: (defaultName, extensions) => ipcRenderer.invoke(IPC.dialogSaveFile, defaultName, extensions),
+    openText: (extensions) => ipcRenderer.invoke(IPC.dialogOpenText, extensions),
+    saveText: (defaultName, extensions, content) =>
+      ipcRenderer.invoke(IPC.dialogSaveText, defaultName, extensions, content)
   },
   media: mediaApi,
   export: {

@@ -65,7 +65,7 @@ export function NumberInput({
           if (e.key === 'Enter') commit()
           if (e.key === 'Escape') setDraft(null)
         }}
-        className={`h-7 w-full min-w-0 rounded-md border border-accent bg-bg px-2 font-mono text-xs text-fg outline-none select-text ${className}`}
+        className={`h-7 min-w-0 flex-1 basis-0 rounded-md border border-accent bg-bg px-2 font-mono text-xs text-fg outline-none select-text ${className}`}
       />
     )
   }
@@ -76,7 +76,7 @@ export function NumberInput({
       disabled={disabled}
       aria-label={label}
       title={label ? `${label} — drag to adjust, click to type` : undefined}
-      className={`h-7 w-full min-w-0 cursor-ew-resize truncate rounded-md border border-line bg-raised px-2 text-left font-mono text-xs text-fg tabular-nums hover:border-faint disabled:opacity-40 ${className}`}
+      className={`h-7 min-w-0 flex-1 basis-0 cursor-ew-resize truncate rounded-md border border-line bg-raised px-2 text-left font-mono text-xs text-fg tabular-nums hover:border-faint disabled:opacity-40 ${className}`}
       onPointerDown={(e) => {
         if (e.button !== 0) return
         const origin = value

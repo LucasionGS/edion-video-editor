@@ -38,6 +38,8 @@ export interface EdionApi {
   dialog: {
     openMedia(): Promise<string[]>
     saveFile(defaultName: string, extensions: string[]): Promise<string | null>
+    openText(extensions: string[]): Promise<{ path: string; content: string } | null>
+    saveText(defaultName: string, extensions: string[], content: string): Promise<string | null>
   }
   media: {
     /** Registers a path as readable and returns its size. */
@@ -56,7 +58,9 @@ export const IPC = {
   ffmpegInfo: 'ffmpeg:info',
   ffmpegProbe: 'ffmpeg:probe',
   dialogOpenMedia: 'dialog:openMedia',
-  dialogSaveFile: 'dialog:saveFile'
+  dialogSaveFile: 'dialog:saveFile',
+  dialogOpenText: 'dialog:openText',
+  dialogSaveText: 'dialog:saveText'
 } as const
 
 // ── Export ─────────────────────────────────────────────────────────────────────────────────────────

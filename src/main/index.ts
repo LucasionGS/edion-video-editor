@@ -1,6 +1,6 @@
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
 import { IPC, SETTINGS_IPC, type AppSettings } from '@shared/ipc'
 import { resolveFfmpeg } from './ffmpeg/paths'
 import { probe } from './ffmpeg/probe'
@@ -76,7 +76,9 @@ function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       sandbox: false,
       // A hidden test window would otherwise have its animation frames paused.
-      backgroundThrottling: !process.env['EDION_SCREENSHOT']
+      backgroundThrottling: !process.env['EDION_SCREENSHOT'],
+      // Offscreen rendering keeps painting without ever showing a window.
+      offscreen: Boolean(process.env['EDION_SCREENSHOT'])
     }
   })
   // Test runs (screenshots) must never put a window on the user's screen.
@@ -114,6 +116,28 @@ function registerIpc(): void {
     const res = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
     return res.canceled ? null : (res.filePath ?? null)
   })
+  ipcMain.handle(IPC.dialogOpenText, async (e, extensions: string[]) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    const res = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [{ name: 'Text', extensions }]
+    })
+    const path = res.filePaths[0]
+    return res.canceled || !path ? null : { path, content: await readFile(path, 'utf8') }
+  })
+  ipcMain.handle(
+    IPC.dialogSaveText,
+    async (e, defaultName: string, extensions: string[], content: string) => {
+      const win = BrowserWindow.fromWebContents(e.sender)!
+      const res = await dialog.showSaveDialog(win, {
+        defaultPath: defaultName,
+        filters: [{ name: 'Text', extensions }]
+      })
+      if (res.canceled || !res.filePath) return null
+      await writeFile(res.filePath, content, 'utf8')
+      return res.filePath
+    }
+  )
   ipcMain.handle(SETTINGS_IPC.get, () => getSettings())
   ipcMain.handle(SETTINGS_IPC.update, (_e, patch: Partial<AppSettings>) => updateSettings(patch))
   registerExportIpc()
@@ -174,6 +198,13 @@ if (!isTestRun && !app.requestSingleInstanceLock()) {
   })
   void app.whenReady().then(async () => {
     await getSettings()
+    // Lets the text tools list installed fonts (Local Font Access API).
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) =>
+      callback((permission as string) === 'local-fonts')
+    )
+    session.defaultSession.setPermissionCheckHandler(
+      (_wc, permission) => (permission as string) === 'local-fonts'
+    )
     registerIpc()
     if (runHeadlessExport()) return
     createMainWindow()

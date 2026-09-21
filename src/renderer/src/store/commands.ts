@@ -1,6 +1,16 @@
-import { clipAtFrame, deleteClips, findClip, pasteClips, splitClip } from '@core/index'
-import type { Id } from '@core/index'
-import { edit, select, useEditor } from './editor'
+import {
+  clipAtFrame,
+  DEFAULT_TRANSITION_SECONDS,
+  deleteClips,
+  findClip,
+  insertClipAuto,
+  pasteClips,
+  removeTransition,
+  setTransition,
+  splitClip
+} from '@core/index'
+import type { Clip, Id, ProjectSettings } from '@core/index'
+import { edit, select, selectTransition, useEditor } from './editor'
 
 /** User-level commands shared by buttons, menus and keyboard shortcuts. */
 
@@ -18,7 +28,11 @@ export function splitAtPlayhead(): void {
 }
 
 export function deleteSelection(ripple = state().ripple): void {
-  const { selection } = state()
+  const { selection, selectedTransition } = state()
+  if (selectedTransition) {
+    edit('Remove transition', (draft) => removeTransition(draft, selectedTransition))
+    return selectTransition(null)
+  }
   if (selection.length === 0) return
   edit(ripple ? 'Ripple delete' : 'Delete clips', (draft) => deleteClips(draft, selection, ripple))
 }
@@ -93,4 +107,46 @@ export function addMarker(): void {
         color: '#f5c451'
       })
   })
+}
+
+// ── Titles, shapes, transitions, captions ─────────────────────────────────────────────────────────
+
+/** Adds a generated clip (text, shape, caption) at the playhead and selects it. */
+export function addGeneratedClip(
+  label: string,
+  make: (start: number, settings: ProjectSettings) => Clip
+): void {
+  const { playhead } = state()
+  let id: Id | null = null
+  edit(label, (draft) => {
+    const clip = make(playhead, draft.settings)
+    insertClipAuto(draft, clip)
+    id = clip.id
+  })
+  if (id) select([id])
+}
+
+/**
+ * Puts a transition on a cut: the one after the selected clip if it touches another clip,
+ * otherwise the one before it, otherwise the cut nearest to the playhead.
+ */
+export function applyTransition(type: string): boolean {
+  const { project, selection, playhead } = state()
+  const frames = Math.max(2, Math.round(DEFAULT_TRANSITION_SECONDS * project.settings.fps))
+  const candidates: Array<{ leftId: Id; distance: number }> = []
+  for (const track of project.tracks) {
+    if (track.kind !== 'video' || track.locked) continue
+    track.clips.forEach((clip, i) => {
+      const next = track.clips[i + 1]
+      if (!next || next.start !== clip.start + clip.duration) return
+      const selected = selection.includes(clip.id) ? 0 : selection.includes(next.id) ? 1 : 2
+      candidates.push({ leftId: clip.id, distance: selected * 1e9 + Math.abs(next.start - playhead) })
+    })
+  }
+  const best = candidates.sort((a, b) => a.distance - b.distance)[0]
+  if (!best) return false
+  let id: Id | null = null
+  edit('Add transition', (draft) => void (id = setTransition(draft, best.leftId, type, frames)))
+  if (id) selectTransition(id)
+  return id !== null
 }

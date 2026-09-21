@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { ExportDialog } from '@/features/export/ExportDialog'
 import { Inspector } from '@/features/inspector/Inspector'
-import { MediaLibrary } from '@/features/library/MediaLibrary'
+import { Library } from '@/features/library/Library'
 import { Timeline } from '@/features/timeline/Timeline'
 import { Viewer } from '@/features/viewer/Viewer'
 import { isDirty, useEditor } from '@/store/editor'
@@ -32,9 +32,7 @@ export function App() {
         <Panel defaultSize="58" minSize="25">
           <Group orientation="horizontal">
             <Panel defaultSize="24" minSize={200} collapsible>
-              <PanelFrame title="Media">
-                <MediaLibrary />
-              </PanelFrame>
+              <Library />
             </Panel>
             <Separator className="w-px bg-line" />
             <Panel minSize="30">

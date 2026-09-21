@@ -2,6 +2,7 @@ import { clipEnd } from '@core/index'
 import type { Track } from '@core/index'
 import { useEditor } from '@/store/editor'
 import { ClipView } from './ClipView'
+import { TransitionBadge } from './TransitionBadge'
 import { useTimelineView } from './view'
 
 const OVERSCAN = 400
@@ -35,6 +36,9 @@ export function Lane({ track, width }: { track: Track; width: number }) {
           />
         )
       )}
+      {track.transitions.map((t) => (
+        <TransitionBadge key={t.id} track={track} transition={t} zoom={zoom} />
+      ))}
     </div>
   )
 }

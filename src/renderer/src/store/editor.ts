@@ -16,6 +16,8 @@ export interface EditorState {
   canRedo: boolean
 
   selection: Id[]
+  /** A selected transition (exclusive with the clip selection). */
+  selectedTransition: Id | null
   playhead: number
   playing: boolean
   tool: Tool
@@ -37,6 +39,7 @@ export const useEditor = create<EditorState>(() => ({
   canUndo: false,
   canRedo: false,
   selection: [],
+  selectedTransition: null,
   playhead: 0,
   playing: false,
   tool: 'select',
@@ -104,13 +107,13 @@ export const isDirty = (state: EditorState = get()): boolean => state.revision !
 
 export function select(ids: Id[], additive = false): void {
   const current = get().selection
-  if (!additive) return set({ selection: ids })
+  if (!additive) return set({ selection: ids, selectedTransition: null })
   const next = new Set(current)
   for (const id of ids) {
     if (next.has(id)) next.delete(id)
     else next.add(id)
   }
-  set({ selection: [...next] })
+  set({ selection: [...next], selectedTransition: null })
 }
 
 export function setPlayhead(frame: number): void {
@@ -120,3 +123,5 @@ export function setPlayhead(frame: number): void {
 export const MIN_ZOOM = 0.02
 export const MAX_ZOOM = 40
 export const setZoom = (zoom: number): void => set({ zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom)) })
+
+export const selectTransition = (id: Id | null): void => set({ selectedTransition: id, selection: [] })
