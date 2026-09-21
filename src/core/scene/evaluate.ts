@@ -7,6 +7,7 @@ import type {
   Crop,
   Id,
   Project,
+  TextStyle,
   Track,
   Transition,
   VisualClip
@@ -67,6 +68,7 @@ export interface Scene {
   /** Back to front. */
   nodes: SceneNode[]
   captions: CaptionClip[]
+  captionStyle: TextStyle
 }
 
 const NO_CROP: Crop = { left: 0, top: 0, right: 0, bottom: 0 }
@@ -122,7 +124,15 @@ function transitionAt(track: Track, frame: number): { transition: Transition; fr
 
 export function evaluateScene(project: Project, frame: number): Scene {
   const { width, height, background } = project.settings
-  const scene: Scene = { frame, width, height, background, nodes: [], captions: [] }
+  const scene: Scene = {
+    frame,
+    width,
+    height,
+    background,
+    nodes: [],
+    captions: [],
+    captionStyle: project.captionStyle
+  }
 
   // tracks[0] is the top of the timeline, so walk backwards to paint back to front.
   for (let i = project.tracks.length - 1; i >= 0; i--) {

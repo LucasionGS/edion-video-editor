@@ -1,10 +1,13 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { IPC } from '@shared/ipc'
+import { IPC, SETTINGS_IPC, type AppSettings } from '@shared/ipc'
 import { resolveFfmpeg } from './ffmpeg/paths'
 import { probe } from './ffmpeg/probe'
 import { onExportProgress, registerExportIpc, startExport } from './export'
+import { registerFileProtocolScheme, registerLibraryIpc } from './library'
+import { registerProjectIpc } from './project'
+import { getSettings, updateSettings } from './settings'
 import { loadRendererPage } from './windows'
 
 const MEDIA_EXTENSIONS = [
@@ -95,8 +98,14 @@ function registerIpc(): void {
     const res = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
     return res.canceled ? null : (res.filePath ?? null)
   })
+  ipcMain.handle(SETTINGS_IPC.get, () => getSettings())
+  ipcMain.handle(SETTINGS_IPC.update, (_e, patch: Partial<AppSettings>) => updateSettings(patch))
   registerExportIpc()
+  registerProjectIpc()
+  registerLibraryIpc()
 }
+
+registerFileProtocolScheme()
 
 /** `EDION_HEADLESS_EXPORT=<input>::<output>` runs one export without UI and exits; used by the golden export test. */
 function runHeadlessExport(): boolean {
@@ -125,7 +134,8 @@ if (!isTestRun && !app.requestSingleInstanceLock()) {
       win.focus()
     }
   })
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    await getSettings()
     registerIpc()
     if (runHeadlessExport()) return
     createMainWindow()

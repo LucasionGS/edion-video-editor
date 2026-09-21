@@ -60,6 +60,9 @@ export interface EdionApi {
     pathForFile(file: File): string
   }
   export: EdionApiExport
+  project: EdionProjectApi
+  library: EdionMediaLibraryApi
+  settings: EdionSettingsApi
 }
 
 export const IPC = {
@@ -111,3 +114,107 @@ export interface EdionApiExport {
   cancel(jobId: string): Promise<void>
   onProgress(cb: (p: ExportProgress) => void): () => void
 }
+
+// ── Projects, settings, media cache ─────────────────────────────────────────────────────────────────
+
+export interface RecentProject {
+  path: string
+  name: string
+  openedAt: number
+}
+
+export interface AppSettings {
+  /** Directory holding custom ffmpeg/ffprobe binaries, or null for bundled. */
+  ffmpegDir: string | null
+  autosaveSeconds: number
+  proxiesEnabled: boolean
+  recents: RecentProject[]
+}
+
+export interface ProjectFile {
+  path: string
+  json: string
+}
+
+export interface AutosaveInfo {
+  projectId: string
+  name: string
+  savedAt: number
+  /** Where the project normally lives, if it was ever saved. */
+  originalPath: string | null
+}
+
+/** What the renderer needs to turn a file into a MediaAsset. */
+export interface ImportedMedia {
+  kind: 'video' | 'audio' | 'image'
+  probe: MediaProbe
+}
+
+export interface Filmstrip {
+  /** `edion-file://` URL of a single-row sprite sheet. */
+  url: string
+  count: number
+  /** Seconds between tiles. */
+  interval: number
+  tileWidth: number
+  tileHeight: number
+}
+
+/** Peak amplitude (0-255) per bucket, mono mixdown. */
+export interface Peaks {
+  perSecond: number
+  data: Uint8Array
+}
+
+export interface EdionProjectApi {
+  open(): Promise<ProjectFile | null>
+  read(path: string): Promise<ProjectFile>
+  /** Atomic write. Returns the path written. */
+  save(path: string, json: string, name: string): Promise<string>
+  saveAs(defaultName: string, json: string, name: string): Promise<string | null>
+  autosave(info: Omit<AutosaveInfo, 'savedAt'>, json: string): Promise<void>
+  listAutosaves(): Promise<AutosaveInfo[]>
+  readAutosave(projectId: string): Promise<string>
+  clearAutosave(projectId: string): Promise<void>
+  setTitle(title: string, dirty: boolean): void
+}
+
+export interface EdionMediaLibraryApi {
+  import(paths: string[]): Promise<Array<ImportedMedia | { error: string; path: string }>>
+  exists(paths: string[]): Promise<boolean[]>
+  relink(missingName: string): Promise<string | null>
+  fileUrl(path: string): Promise<string>
+  filmstrip(path: string): Promise<Filmstrip | null>
+  peaks(path: string): Promise<Peaks | null>
+}
+
+export interface EdionSettingsApi {
+  get(): Promise<AppSettings>
+  update(patch: Partial<Omit<AppSettings, 'recents'>>): Promise<AppSettings>
+}
+
+export const PROJECT_IPC = {
+  open: 'project:open',
+  read: 'project:read',
+  save: 'project:save',
+  saveAs: 'project:saveAs',
+  autosave: 'project:autosave',
+  listAutosaves: 'project:listAutosaves',
+  readAutosave: 'project:readAutosave',
+  clearAutosave: 'project:clearAutosave',
+  setTitle: 'project:setTitle'
+} as const
+
+export const LIBRARY_IPC = {
+  import: 'library:import',
+  exists: 'library:exists',
+  relink: 'library:relink',
+  fileUrl: 'library:fileUrl',
+  filmstrip: 'library:filmstrip',
+  peaks: 'library:peaks'
+} as const
+
+export const SETTINGS_IPC = { get: 'settings:get', update: 'settings:update' } as const
+
+export const FILE_PROTOCOL = 'edion-file'
+export const PROJECT_EXTENSION = 'edion'
