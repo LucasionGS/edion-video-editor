@@ -27,6 +27,20 @@ pnpm dist           # installers for the current OS (dist:dir for an unpacked bu
 pnpm dist:pacman    # Arch package (install with: sudo pacman -U dist/edion-0.1.0.pacman)
 ```
 
+## Releasing
+
+Releases are built by GitHub Actions. Bump `version` in `package.json`, commit, then tag it:
+
+```sh
+git tag v0.2.0 && git push origin main v0.2.0
+```
+
+The workflow runs the tests, builds the Linux AppImage and pacman package, the Windows installer and
+the macOS disk image, and publishes them (plus a `SHA256SUMS.txt`) on a GitHub Release for the tag.
+A tag whose version doesn't match `package.json` fails the build. Tags containing a `-`
+(`v0.2.0-beta.1`) are published as pre-releases. Builds are unsigned: macOS will warn on first launch
+(right-click → Open), and Windows SmartScreen may ask for confirmation.
+
 ## Architecture
 
 ```

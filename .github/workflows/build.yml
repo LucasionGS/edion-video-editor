@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -21,13 +24,30 @@ jobs:
       - run: pnpm test
       # Electron needs a display server even for hidden windows.
       - run: xvfb-run -a pnpm test:export
+      # A release must be built from a package.json whose version matches the tag.
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag v$tag does not match package.json version $version"
+            exit 1
+          fi
 
   package:
     needs: test
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            # bsdtar (libarchive-tools) is what electron-builder uses to write pacman packages.
+            setup: sudo apt-get update && sudo apt-get install -y libarchive-tools
+            targets: --linux AppImage pacman
+          - os: windows-latest
+            targets: --win nsis
+          - os: macos-latest
+            targets: --mac dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -35,14 +55,42 @@ jobs:
         with: { version: 11 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
+      - if: matrix.setup
+        run: ${{ matrix.setup }}
       - run: pnpm install --frozen-lockfile
-      # pacman packages need bsdtar, which the Ubuntu runner lacks; CI builds the AppImage only.
-      - run: pnpm build && pnpm exec electron-builder --publish never ${{ matrix.os == 'ubuntu-latest' && '--linux AppImage' || '' }}
+      - run: pnpm build
+      - run: pnpm exec electron-builder ${{ matrix.targets }} --publish never
+        env:
+          # Unsigned macOS builds: skip notarisation instead of failing on it.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
       - uses: actions/upload-artifact@v4
         with:
           name: edion-${{ matrix.os }}
           path: |
             dist/*.AppImage
+            dist/*.pacman
             dist/*.exe
             dist/*.dmg
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - run: |
+          cd artifacts
+          sha256sum * > SHA256SUMS.txt
+          ls -la
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Edion ${{ github.ref_name }}
+          # Pre-release tags like v0.2.0-beta.1 stay marked as pre-releases.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: artifacts/*
+          fail_on_unmatched_files: true
