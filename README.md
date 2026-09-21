@@ -24,7 +24,7 @@ pnpm test           # unit tests for the editing core
 pnpm test:export    # builds the app and renders real projects headlessly (no window, no sound)
 pnpm typecheck
 pnpm dist           # installers for the current OS (dist:dir for an unpacked build)
-pnpm dist:pacman    # Arch package; needs a "homepage" URL in package.json first
+pnpm dist:pacman    # Arch package (install with: sudo pacman -U dist/edion-0.1.0.pacman)
 ```
 
 ## Architecture

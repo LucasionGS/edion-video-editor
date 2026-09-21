@@ -21,10 +21,10 @@ linux:
   category: AudioVideo
   # System packages (pacman, deb) need a "homepage" in package.json; see `pnpm dist:pacman`.
   target: [AppImage]
-  # ffprobe-static ships binaries for every OS; each build drops the foreign ones.
-  files:
-    - '!node_modules/ffprobe-static/bin/darwin/**'
-    - '!node_modules/ffprobe-static/bin/win32/**'
+pacman:
+  # electron-builder's default list names packages Arch no longer ships (http-parser). These are what
+  # Electron actually loads; FFmpeg is bundled, so the system one is optional (it only adds GPU encoders).
+  depends: [gtk3, nss, libxss, libnotify, alsa-lib, at-spi2-core, libxkbcommon, mesa, libcups]
 win:
   icon: resources/icon.png
   target: [nsis]
