@@ -73,7 +73,7 @@ export function Viewer() {
           {scale > 0 && <Gizmo scale={scale} width={fitted.width} height={fitted.height} />}
         </div>
       </div>
-      <footer className="grid h-11 shrink-0 grid-cols-3 items-center border-t border-line bg-surface px-3">
+      <footer className="@container grid h-11 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-t border-line bg-surface px-3">
         <Timecode fps={fps} />
         <div className="flex items-center justify-center gap-0.5">
           <IconButton label="Go to start (Home)" onClick={() => seek(0)}>
@@ -136,14 +136,14 @@ function Timecode({ fps }: { fps: number }) {
   return (
     <button
       type="button"
-      className="flex items-baseline gap-1.5 justify-self-start rounded px-1 py-0.5 font-mono text-xs tabular-nums hover:bg-hover"
+      className="flex items-baseline gap-1.5 justify-self-start rounded px-1 py-0.5 font-mono text-xs whitespace-nowrap tabular-nums hover:bg-hover"
       onClick={() => setTimeDisplay(next.value)}
       title={`Showing: ${TIME_DISPLAYS[index]?.label}. Click for: ${next.label}`}
     >
       <span className="text-fg">{formatPosition(playhead, fps, display)}</span>
       <span className="text-faint">/ {formatPosition(duration, fps, display)}</span>
       {/* The other two readings of the same position, so the units are never ambiguous. */}
-      <span className="text-2xs text-faint">
+      <span className="text-2xs text-faint @max-[640px]:hidden">
         {display === 'time'
           ? `frame ${playhead - Math.round(second * fps)} of ${Math.round(fps)}`
           : display === 'timecode'

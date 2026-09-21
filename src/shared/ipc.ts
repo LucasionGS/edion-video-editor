@@ -33,6 +33,8 @@ export interface EdionApi {
   /** The window is about to close; call `confirmClose()` once unsaved work has been dealt with. */
   onCloseRequested(cb: () => void): () => void
   confirmClose(): void
+  /** Puts text on the system clipboard (works without window focus, unlike the web clipboard API). */
+  copyText(text: string): void
   platform: string
   ffmpeg: {
     info(): Promise<FfmpegInfo>
@@ -67,6 +69,7 @@ export const IPC = {
   dialogChooseFolder: 'dialog:chooseFolder',
   closeRequested: 'app:closeRequested',
   closeConfirmed: 'app:closeConfirmed',
+  copyText: 'app:copyText',
   dialogSaveText: 'dialog:saveText'
 } as const
 

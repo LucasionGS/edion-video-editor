@@ -1,14 +1,27 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, FileAudio, ImageIcon, Plus, Trash2, Upload } from 'lucide-react'
-import { formatClock, removeMedia } from '@core/index'
+import {
+  AlertTriangle,
+  Copy,
+  FileAudio,
+  FolderSearch,
+  Gauge,
+  ImageIcon,
+  Link2,
+  MousePointerClick,
+  Plus,
+  Trash2,
+  Upload
+} from 'lucide-react'
+import { formatClock, projectDuration, removeMedia } from '@core/index'
 import type { MediaAsset } from '@core/index'
 import type { Filmstrip } from '@shared/ipc'
-import { edit, useEditor } from '@/store/editor'
-import { confirm } from '@/store/feedback'
+import { edit, select, useEditor } from '@/store/editor'
+import { confirm, toast } from '@/store/feedback'
 import { addAssetToTimeline, importMedia, importMediaDialog, relinkMedia } from '@/store/projectActions'
 import { Button } from '@/ui/Button'
 import { EmptyState } from '@/ui/Panel'
-import { useProxies } from '@/engine/proxies'
+import { requestProxy, useProxies } from '@/engine/proxies'
+import { openContextMenu, type MenuItem } from '@/ui/ContextMenu'
 import { VoiceoverButton } from './Voiceover'
 
 export const MEDIA_DRAG_TYPE = 'application/x-edion-media'
@@ -27,6 +40,11 @@ export function MediaLibrary() {
         setDropping(true)
       }}
       onDragLeave={() => setDropping(false)}
+      onContextMenu={(e) =>
+        openContextMenu(e, [
+          { label: 'Import media…', icon: <Upload size={13} />, onSelect: () => void importMediaDialog() }
+        ])
+      }
       onDrop={(e) => {
         e.preventDefault()
         setDropping(false)
@@ -81,8 +99,89 @@ function MediaCard({ asset, missing }: { asset: MediaAsset; missing: boolean }) 
     edit('Remove media', (draft) => removeMedia(draft, asset.id))
   }
 
+  function openMenu(event: React.MouseEvent): void {
+    event.stopPropagation()
+    const { project } = useEditor.getState()
+    const uses = project.tracks.flatMap((t) =>
+      t.clips.filter((c) => 'mediaId' in c && c.mediaId === asset.id).map((c) => c.id)
+    )
+    const items: MenuItem[] = [
+      {
+        label: 'Add at playhead',
+        icon: <Plus size={13} />,
+        disabled: missing,
+        onSelect: () => addAssetToTimeline(asset)
+      },
+      {
+        label: 'Add at end of timeline',
+        disabled: missing,
+        onSelect: () => addAssetToTimeline(asset, projectDuration(project))
+      },
+      { type: 'separator' },
+      {
+        label: uses.length
+          ? `Select ${uses.length} clip${uses.length > 1 ? 's' : ''} using this`
+          : 'Not used on the timeline',
+        icon: <MousePointerClick size={13} />,
+        disabled: uses.length === 0,
+        onSelect: () => select(uses)
+      },
+      {
+        label: 'Show in folder',
+        icon: <FolderSearch size={13} />,
+        disabled: missing,
+        onSelect: () => void window.edion.export.reveal(asset.path)
+      },
+      {
+        label: 'Copy file path',
+        icon: <Copy size={13} />,
+        onSelect: () => {
+          window.edion.copyText(asset.path)
+          toast('Path copied')
+        }
+      },
+      {
+        label: missing ? 'Locate missing file…' : 'Replace file…',
+        icon: <Link2 size={13} />,
+        onSelect: () => void relinkMedia(asset.id)
+      }
+    ]
+    if (asset.kind === 'video' && !missing) {
+      items.push({
+        label:
+          proxy === 'pending'
+            ? 'Creating preview proxy…'
+            : typeof proxy === 'object'
+              ? 'Preview proxy ready'
+              : 'Create preview proxy',
+        icon: <Gauge size={13} />,
+        disabled: proxy === 'pending' || typeof proxy === 'object',
+        onSelect: () => {
+          toast('Creating a lightweight preview copy in the background…')
+          void requestProxy(asset.path).then((path) =>
+            toast(
+              path ? `Proxy ready for “${asset.name}”` : 'Proxy creation failed',
+              path ? 'success' : 'error'
+            )
+          )
+        }
+      })
+    }
+    items.push(
+      { type: 'separator' },
+      {
+        label: 'Remove from project',
+        icon: <Trash2 size={13} />,
+        danger: true,
+        onSelect: () => void remove()
+      }
+    )
+    openContextMenu(event, items)
+  }
+
   return (
     <li
+      onContextMenu={openMenu}
       className="group relative cursor-grab overflow-hidden rounded-md border border-line bg-raised active:cursor-grabbing"
       draggable={!missing}
       onDragStart={(e) => {

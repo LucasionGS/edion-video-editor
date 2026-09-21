@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, session, shell } from 'electron'
 import { IPC, SETTINGS_IPC, type AppSettings } from '@shared/ipc'
 import { resolveFfmpeg } from './ffmpeg/paths'
 import { probe } from './ffmpeg/probe'
@@ -164,6 +164,11 @@ function registerIpc(): void {
       return res.filePath
     }
   )
+  ipcMain.on(IPC.copyText, (_e, text: string) => {
+    // Automated runs must not overwrite whatever the user has on their clipboard.
+    if (isAutomatedRun) console.log('[clipboard]', text)
+    else clipboard.writeText(text)
+  })
   ipcMain.handle(SETTINGS_IPC.get, () => getSettings())
   ipcMain.handle(SETTINGS_IPC.update, (_e, patch: Partial<AppSettings>) => updateSettings(patch))
   registerExportIpc()

@@ -18,6 +18,7 @@ const api: EdionApi = {
     return () => ipcRenderer.removeListener(IPC.closeRequested, listener)
   },
   confirmClose: () => ipcRenderer.send(IPC.closeConfirmed),
+  copyText: (text) => ipcRenderer.send(IPC.copyText, text),
   ffmpeg: {
     info: () => ipcRenderer.invoke(IPC.ffmpegInfo),
     probe: (path) => ipcRenderer.invoke(IPC.ffmpegProbe, path)
