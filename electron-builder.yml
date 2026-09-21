@@ -1,0 +1,44 @@
+appId: dev.lucasion.edion
+productName: Edion
+copyright: Copyright © 2026 Lucas Ion
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+# Executables cannot run from inside the asar archive.
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+  - node_modules/ffprobe-static/**
+fileAssociations:
+  - ext: edion
+    name: Edion Project
+    mimeType: application/x-edion
+    role: Editor
+linux:
+  icon: resources/icon.png
+  category: AudioVideo
+  target: [AppImage, deb, pacman]
+  # ffprobe-static ships binaries for every OS; each build drops the foreign ones.
+  files:
+    - '!node_modules/ffprobe-static/bin/darwin/**'
+    - '!node_modules/ffprobe-static/bin/win32/**'
+win:
+  icon: resources/icon.png
+  target: [nsis]
+  files:
+    - '!node_modules/ffprobe-static/bin/darwin/**'
+    - '!node_modules/ffprobe-static/bin/linux/**'
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  icon: resources/icon.png
+  category: public.app-category.video
+  target: [dmg]
+  files:
+    - '!node_modules/ffprobe-static/bin/linux/**'
+    - '!node_modules/ffprobe-static/bin/win32/**'
+  extendInfo:
+    NSMicrophoneUsageDescription: Edion records voiceovers from your microphone.

@@ -28,6 +28,8 @@ export async function confirmDiscard(): Promise<boolean> {
   })
   if (answer === 'cancel') return false
   if (answer === 'confirm') return saveProject()
+  // Knowingly discarded work should not come back as a recovery offer.
+  void window.edion.project.clearAutosave(get().project.id)
   return true
 }
 

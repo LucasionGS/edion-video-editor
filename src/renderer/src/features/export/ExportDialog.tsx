@@ -20,6 +20,7 @@ const QUALITIES: ReadonlyArray<{ value: ExportQuality; label: string }> = [
 export function ExportDialog({ onClose }: { onClose: () => void }) {
   const project = useEditor((s) => s.project)
   const jobs = useExports((s) => s.jobs)
+  const missing = useEditor((s) => s.missingMedia.length)
   const duration = projectDuration(project)
   const { width, height, fps } = project.settings
 
@@ -118,6 +119,12 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
             onChange={(v) => setUseRange(v === 'range' && Boolean(project.range))}
           />
         </Field>
+        {missing > 0 && (
+          <p className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+            {missing} media file{missing > 1 ? 's are' : ' is'} missing. Clips that use{' '}
+            {missing > 1 ? 'them' : 'it'} will be left out of the export.
+          </p>
+        )}
         <div className="mt-2 flex items-center justify-between border-t border-line pt-3">
           <span className="text-2xs text-faint">
             {formatTimecode(frames, fps)} · {frames} frames · {Number(fps.toFixed(3))} fps
