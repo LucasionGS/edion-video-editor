@@ -50,11 +50,20 @@ export function removeTrack(project: Project, trackId: Id): void {
   project.tracks = project.tracks.filter((t) => t.id !== trackId)
 }
 
-export function moveTrack(project: Project, trackId: Id, toIndex: number): void {
+/**
+ * Moves a track to `toIndex` (its position in the list after the move). Tracks stay grouped by kind
+ * (captions above video above audio), so the target is clamped to the group of the same kind.
+ */
+export function moveTrack(project: Project, trackId: Id, toIndex: number): boolean {
   const from = project.tracks.findIndex((t) => t.id === trackId)
-  if (from < 0) return
+  if (from < 0) return false
   const [track] = project.tracks.splice(from, 1)
-  project.tracks.splice(Math.max(0, Math.min(toIndex, project.tracks.length)), 0, track!)
+  const sameKind = project.tracks.map((t, i) => (t.kind === track!.kind ? i : -1)).filter((i) => i >= 0)
+  const min = sameKind.length ? sameKind[0]! : from
+  const max = sameKind.length ? sameKind[sameKind.length - 1]! + 1 : from
+  const to = Math.max(min, Math.min(toIndex, max))
+  project.tracks.splice(to, 0, track!)
+  return to !== from
 }
 
 // ── Media ─────────────────────────────────────────────────────────────────────────────────────────

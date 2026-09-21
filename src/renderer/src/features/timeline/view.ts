@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Filmstrip, Peaks } from '@shared/ipc'
 
-export const HEADER_WIDTH = 176
+export const HEADER_WIDTH = 192
 export const RULER_HEIGHT = 26
 
 interface TimelineView {
@@ -13,6 +13,8 @@ interface TimelineView {
   razorFrame: number | null
   /** Rubber-band selection rectangle, in timeline content coordinates. */
   marquee: { left: number; top: number; width: number; height: number } | null
+  /** Track drag in progress: the dragged track and the list index it would land at. */
+  trackDrag: { trackId: string; toIndex: number } | null
   /** Bumped when a filmstrip or waveform finished loading, to repaint lanes. */
   visualsVersion: number
 }
@@ -23,6 +25,7 @@ export const useTimelineView = create<TimelineView>(() => ({
   snapGuide: null,
   razorFrame: null,
   marquee: null,
+  trackDrag: null,
   visualsVersion: 0
 }))
 

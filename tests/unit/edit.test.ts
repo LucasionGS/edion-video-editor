@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  addTrack,
   clipEnd,
   createCaptionClip,
   createTextClip,
@@ -10,6 +11,7 @@ import {
   insertClip,
   insertClipAuto,
   moveClips,
+  moveTrack,
   nearestFreeStart,
   pasteClips,
   projectDuration,
@@ -21,6 +23,23 @@ import {
 } from '@core/index'
 import type { VideoClip } from '@core/index'
 import { assertTrackInvariants, projectWithClips } from './helpers'
+
+describe('tracks', () => {
+  it('reorders within the same kind and never crosses into another kind', () => {
+    const { project } = projectWithClips([0, 10])
+    addTrack(project, 'video')
+    addTrack(project, 'video')
+    // [V3, V2, V1, A1]
+    const names = () => project.tracks.map((t) => t.name)
+    expect(moveTrack(project, project.tracks[0]!.id, 2)).toBe(true)
+    expect(names()).toEqual(['Video 2', 'Video 1', 'Video 3', 'Audio 1'])
+    // Trying to drop a video track below the audio track stops at the bottom of the video group.
+    moveTrack(project, project.tracks[0]!.id, 4)
+    expect(names()).toEqual(['Video 1', 'Video 3', 'Video 2', 'Audio 1'])
+    expect(moveTrack(project, project.tracks[3]!.id, 0)).toBe(false)
+    expect(names()[3]).toBe('Audio 1')
+  })
+})
 
 describe('insert', () => {
   it('rejects overlaps and wrong track kinds', () => {

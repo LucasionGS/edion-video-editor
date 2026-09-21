@@ -36,6 +36,7 @@ export function Timeline() {
   const zoom = useEditor((s) => s.zoom)
   const duration = useEditor((s) => projectDuration(s.project))
   const viewportWidth = useTimelineView((s) => s.viewportWidth)
+  const trackDrag = useTimelineView((s) => s.trackDrag)
   // Always leave room to drop clips after the end.
   const contentWidth = Math.max(viewportWidth, duration * zoom + viewportWidth * 0.6)
 
@@ -166,7 +167,11 @@ export function Timeline() {
           </div>
           <div>
             {tracks.map((track) => (
-              <div key={track.id} className="flex">
+              <div
+                key={track.id}
+                data-track-row
+                className={`flex ${trackDrag?.trackId === track.id ? 'opacity-50' : ''}`}
+              >
                 <TrackHeader track={track} />
                 <div className="relative">
                   <LaneCanvas track={track} />
@@ -175,6 +180,7 @@ export function Timeline() {
               </div>
             ))}
           </div>
+          <TrackDropLine />
           <Guides />
         </div>
       </div>
@@ -331,5 +337,29 @@ function Toolbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | nu
         </IconButton>
       </div>
     </div>
+  )
+}
+
+/** The line showing where a dragged track will land. */
+function TrackDropLine() {
+  const drag = useTimelineView((s) => s.trackDrag)
+  const tracks = useEditor((s) => s.project.tracks)
+  if (!drag) return null
+  // Same clamping as the core op: the line never leaves the group of the dragged track's kind.
+  const kind = tracks.find((t) => t.id === drag.trackId)?.kind
+  const others = tracks.filter((t) => t.id !== drag.trackId)
+  const group = others.map((t, i) => (t.kind === kind ? i : -1)).filter((i) => i >= 0)
+  const from = tracks.findIndex((t) => t.id === drag.trackId)
+  const target = drag.toIndex > from ? drag.toIndex - 1 : drag.toIndex
+  const clamped = group.length ? Math.max(group[0]!, Math.min(target, group[group.length - 1]! + 1)) : from
+  // Back to a gap in the full list (which includes the dragged row) for positioning.
+  const gap = clamped >= from ? clamped + 1 : clamped
+  let top = RULER_HEIGHT
+  for (const track of tracks.slice(0, gap)) top += track.height
+  return (
+    <div
+      className="pointer-events-none absolute right-0 left-0 z-40 h-0.5 -translate-y-px bg-accent"
+      style={{ top }}
+    />
   )
 }
