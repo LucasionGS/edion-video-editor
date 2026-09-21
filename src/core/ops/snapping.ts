@@ -19,7 +19,7 @@ export interface SnapSettings {
 
 export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   distance: 8,
-  maxSeconds: 0.25,
+  maxSeconds: 0,
   gridSeconds: 0,
   clipEdges: true,
   playhead: true,
@@ -50,10 +50,17 @@ export function snapPoints(
   return [...points].sort((a, b) => a - b)
 }
 
-/** Pull radius in frames at the given zoom (pixels per frame). Never below one frame, so exact neighbours always catch. */
+/** The time cap may never shrink the pull below this many pixels, or snapping becomes impossible to hit. */
+export const MIN_SNAP_PIXELS = 3
+
+/**
+ * Pull radius in frames at the given zoom (pixels per frame): the pixel distance, optionally capped
+ * in time. Zoomed far out a single pixel can span more than the cap, so the cap is floored at a few
+ * pixels (nothing finer can be pointed at anyway), and the result at one frame so neighbours always catch.
+ */
 export function snapThreshold(settings: SnapSettings, zoom: number, fps: number): number {
   const byPixels = settings.distance / zoom
-  const cap = settings.maxSeconds > 0 ? settings.maxSeconds * fps : Infinity
+  const cap = settings.maxSeconds > 0 ? Math.max(settings.maxSeconds * fps, MIN_SNAP_PIXELS / zoom) : Infinity
   return Math.max(1, Math.min(byPixels, cap))
 }
 

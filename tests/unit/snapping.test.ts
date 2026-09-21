@@ -16,11 +16,19 @@ describe('snap points', () => {
 describe('snap threshold', () => {
   const settings = { ...DEFAULT_SNAP_SETTINGS, distance: 8, maxSeconds: 0.25 }
   it('follows the pixel radius when zoomed in', () => expect(snapThreshold(settings, 4, 60)).toBe(2))
-  it('is capped in time when zoomed out', () => {
-    // 8 px at 0.1 px/frame would be 80 frames (1.3 s); the cap keeps it to a quarter second.
-    expect(snapThreshold(settings, 0.1, 60)).toBe(15)
+  it('is capped in time when that still leaves something to aim at', () => {
+    // 8 px at 1 px/frame is 8 frames; a 0.1 s cap at 60 fps trims it to 6.
+    expect(snapThreshold({ ...settings, maxSeconds: 0.1 }, 1, 60)).toBe(6)
     expect(snapThreshold({ ...settings, maxSeconds: 0 }, 0.1, 60)).toBe(80)
   })
+  it('never lets the cap shrink the pull below a few pixels', () => {
+    // A 6-minute 60 fps timeline fitted to ~1000 px: one pixel is ~22 frames, far more than a quarter second.
+    const zoom = 1000 / (6 * 60 * 60)
+    const threshold = snapThreshold(settings, zoom, 60)
+    expect(threshold * zoom).toBeCloseTo(3)
+    expect(threshold).toBeGreaterThan(0.25 * 60)
+  })
+  it('does not cap by default', () => expect(DEFAULT_SNAP_SETTINGS.maxSeconds).toBe(0))
   it('never drops below one frame', () => expect(snapThreshold(settings, 40, 60)).toBe(1))
 })
 

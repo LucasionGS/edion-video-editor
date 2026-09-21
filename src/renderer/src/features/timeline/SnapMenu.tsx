@@ -108,7 +108,10 @@ export function SnapMenu() {
           {check('markers', 'Markers')}
         </div>
         <div className="flex items-center justify-between border-t border-line pt-2">
-          <p className="text-2xs leading-relaxed text-faint">Hold Alt while dragging to ignore snapping.</p>
+          <p className="text-2xs leading-relaxed text-faint">
+            Hold Alt while dragging to ignore snapping. Zoom in for finer control: the limit never shrinks the
+            pull below 3 px.
+          </p>
           <button
             className="shrink-0 text-2xs text-muted hover:text-fg"
             onClick={() => setSnapSettings(DEFAULT_SNAP_SETTINGS)}
