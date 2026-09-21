@@ -1,0 +1,204 @@
+import { z } from 'zod'
+
+/** Project file schema. Types are derived from it so validation and typing can never drift apart. */
+
+export const PROJECT_VERSION = 1
+
+const id = z.string().min(1)
+const frames = z.number().int()
+const vec2 = z.tuple([z.number(), z.number()])
+
+export const easingSchema = z.union([
+  z.enum(['linear', 'easeIn', 'easeOut', 'easeInOut', 'hold']),
+  z.object({ bezier: z.tuple([z.number(), z.number(), z.number(), z.number()]) })
+])
+
+const animatable = <T extends z.ZodType>(value: T) =>
+  z.object({
+    value,
+    /** Sorted by frame; frames are relative to the clip start. */
+    keyframes: z.array(z.object({ frame: frames, value, easing: easingSchema })).optional()
+  })
+
+export const animNumberSchema = animatable(z.number())
+export const animVec2Schema = animatable(vec2)
+
+export const transformSchema = z.object({
+  /** Offset of the anchor from the canvas centre, in project pixels. */
+  position: animVec2Schema,
+  /** 1 = the layer's natural size (media is fitted into the canvas first). */
+  scale: animVec2Schema,
+  /** Degrees, clockwise. */
+  rotation: animNumberSchema,
+  opacity: animNumberSchema,
+  /** Normalised pivot inside the layer, [0.5, 0.5] = centre. */
+  anchor: vec2
+})
+
+export const cropSchema = z.object({
+  left: z.number(),
+  top: z.number(),
+  right: z.number(),
+  bottom: z.number()
+})
+
+export const blendModeSchema = z.enum(['normal', 'add', 'multiply', 'screen', 'overlay', 'darken', 'lighten'])
+
+export const effectSchema = z.object({
+  id,
+  type: z.string(),
+  enabled: z.boolean(),
+  params: z.record(z.string(), animNumberSchema)
+})
+
+export const textStyleSchema = z.object({
+  fontFamily: z.string(),
+  fontSize: z.number(),
+  fontWeight: z.number(),
+  italic: z.boolean(),
+  color: z.string(),
+  align: z.enum(['left', 'center', 'right']),
+  lineHeight: z.number(),
+  letterSpacing: z.number(),
+  strokeColor: z.string(),
+  strokeWidth: z.number(),
+  shadowColor: z.string(),
+  shadowBlur: z.number(),
+  shadowOffset: vec2,
+  backgroundColor: z.string(),
+  backgroundPadding: z.number(),
+  backgroundRadius: z.number()
+})
+
+const clipBase = { id, name: z.string(), start: frames, duration: frames.min(1) }
+const visual = {
+  transform: transformSchema,
+  blendMode: blendModeSchema,
+  effects: z.array(effectSchema)
+}
+const timed = {
+  mediaId: id,
+  /** Offset into the source, in seconds. */
+  sourceIn: z.number().min(0),
+  speed: z.number().positive()
+}
+const audible = {
+  volume: animNumberSchema,
+  /** Audio fades, in frames. */
+  fadeIn: frames.min(0),
+  fadeOut: frames.min(0)
+}
+
+export const videoClipSchema = z.object({
+  ...clipBase,
+  ...visual,
+  ...timed,
+  ...audible,
+  type: z.literal('video'),
+  crop: cropSchema,
+  /** True once the audio was detached into its own clip (or the source has none). */
+  audioMuted: z.boolean()
+})
+export const audioClipSchema = z.object({ ...clipBase, ...timed, ...audible, type: z.literal('audio') })
+export const imageClipSchema = z.object({
+  ...clipBase,
+  ...visual,
+  type: z.literal('image'),
+  mediaId: id,
+  crop: cropSchema
+})
+export const textClipSchema = z.object({
+  ...clipBase,
+  ...visual,
+  type: z.literal('text'),
+  text: z.string(),
+  style: textStyleSchema,
+  /** Wrap width in project pixels; 0 = no wrapping. */
+  boxWidth: z.number()
+})
+export const shapeClipSchema = z.object({
+  ...clipBase,
+  ...visual,
+  type: z.literal('shape'),
+  shape: z.enum(['rect', 'ellipse']),
+  size: vec2,
+  fill: z.string(),
+  strokeColor: z.string(),
+  strokeWidth: z.number(),
+  cornerRadius: z.number()
+})
+export const captionClipSchema = z.object({ ...clipBase, type: z.literal('caption'), text: z.string() })
+
+export const clipSchema = z.discriminatedUnion('type', [
+  videoClipSchema,
+  audioClipSchema,
+  imageClipSchema,
+  textClipSchema,
+  shapeClipSchema,
+  captionClipSchema
+])
+
+export const transitionSchema = z.object({
+  id,
+  type: z.string(),
+  /** Total length in frames, centred on the cut between the two clips. */
+  duration: frames.min(2),
+  leftClipId: id,
+  rightClipId: id
+})
+
+export const trackSchema = z.object({
+  id,
+  kind: z.enum(['video', 'audio', 'caption']),
+  name: z.string(),
+  /** Never overlapping, sorted by start. */
+  clips: z.array(clipSchema),
+  transitions: z.array(transitionSchema),
+  muted: z.boolean(),
+  solo: z.boolean(),
+  hidden: z.boolean(),
+  locked: z.boolean(),
+  height: z.number()
+})
+
+export const mediaAssetSchema = z.object({
+  id,
+  kind: z.enum(['video', 'audio', 'image']),
+  name: z.string(),
+  path: z.string(),
+  size: z.number(),
+  /** Seconds; 0 for stills. */
+  duration: z.number(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  fps: z.number().optional(),
+  rotation: z.number().optional(),
+  videoCodec: z.string().optional(),
+  audioCodec: z.string().optional(),
+  hasAudio: z.boolean()
+})
+
+export const projectSettingsSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  fps: z.number().positive(),
+  sampleRate: z.number().int().positive(),
+  background: z.string()
+})
+
+export const markerSchema = z.object({ id, frame: frames, label: z.string(), color: z.string() })
+
+export const projectSchema = z.object({
+  app: z.literal('edion'),
+  version: z.number().int(),
+  id,
+  name: z.string(),
+  settings: projectSettingsSchema,
+  media: z.array(mediaAssetSchema),
+  /** Top of the list = top of the timeline = rendered last (in front). */
+  tracks: z.array(trackSchema),
+  markers: z.array(markerSchema),
+  captionStyle: textStyleSchema,
+  /** Export range in frames, if set. */
+  range: z.object({ in: frames, out: frames }).nullable()
+})

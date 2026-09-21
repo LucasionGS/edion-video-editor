@@ -17,12 +17,36 @@ const FPS = 30
 if (!existsSync(fixture)) {
   mkdirSync(fixtureDir, { recursive: true })
   execFileSync('ffmpeg', [
-    '-hide_banner', '-loglevel', 'error', '-y',
-    '-f', 'lavfi', '-i', `testsrc2=size=1280x720:rate=${FPS}:duration=${DURATION}`,
-    '-f', 'lavfi', '-i', `sine=frequency=440:duration=${DURATION}`,
-    '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p',
-    '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv',
-    '-c:v', 'libx264', '-crf', '12', '-c:a', 'aac', '-shortest', fixture
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    `testsrc2=size=1280x720:rate=${FPS}:duration=${DURATION}`,
+    '-f',
+    'lavfi',
+    '-i',
+    `sine=frequency=440:duration=${DURATION}`,
+    '-vf',
+    'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p',
+    '-colorspace',
+    'bt709',
+    '-color_primaries',
+    'bt709',
+    '-color_trc',
+    'bt709',
+    '-color_range',
+    'tv',
+    '-c:v',
+    'libx264',
+    '-crf',
+    '12',
+    '-c:a',
+    'aac',
+    '-shortest',
+    fixture
   ])
 }
 
@@ -44,9 +68,13 @@ try {
   if (run.status !== 0) console.error(run.stderr)
 
   const probe = JSON.parse(
-    execFileSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_streams', '-count_frames', output], {
-      encoding: 'utf8'
-    })
+    execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-print_format', 'json', '-show_streams', '-count_frames', output],
+      {
+        encoding: 'utf8'
+      }
+    )
   )
   const video = probe.streams.find((s) => s.codec_type === 'video')
   const audio = probe.streams.find((s) => s.codec_type === 'audio')
