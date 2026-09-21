@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { ExportDialog } from '@/features/export/ExportDialog'
 import { Inspector } from '@/features/inspector/Inspector'
+import { SettingsDialog } from '@/features/settings/SettingsDialog'
+import { Welcome } from '@/features/welcome/Welcome'
 import { Library } from '@/features/library/Library'
 import { Timeline } from '@/features/timeline/Timeline'
 import { Viewer } from '@/features/viewer/Viewer'
 import { isDirty, useEditor } from '@/store/editor'
 import { wireExports } from '@/store/exports'
-import { autosave, openProject } from '@/store/projectActions'
+import { autosave, confirmDiscard, openProject } from '@/store/projectActions'
+import { activeJob, useExports } from '@/store/exports'
+import { confirm } from '@/store/feedback'
 import { ConfirmDialog, Toasts } from '@/ui/Feedback'
 import { PanelFrame } from '@/ui/Panel'
 import { useShortcuts } from './shortcuts'
@@ -15,6 +19,8 @@ import { TopBar } from './TopBar'
 
 export function App() {
   const [exportOpen, setExportOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  useCloseGuard()
   useShortcuts(useMemo(() => ({ 'ctrl+e': () => setExportOpen(true) }), []))
   useWindowTitle()
   useAutosave()
@@ -27,7 +33,7 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar onExport={() => setExportOpen(true)} />
+      <TopBar onExport={() => setExportOpen(true)} onSettings={() => setSettingsOpen(true)} />
       <Group orientation="vertical" className="min-h-0 flex-1">
         <Panel defaultSize="58" minSize="25">
           <Group orientation="horizontal">
@@ -52,6 +58,8 @@ export function App() {
         </Panel>
       </Group>
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      <Welcome />
       <Toasts />
       <ConfirmDialog />
     </div>
@@ -72,4 +80,24 @@ function useAutosave(): void {
     })
     return () => clearInterval(timer)
   }, [])
+}
+
+/** Closing the window first deals with unsaved changes and running exports. */
+function useCloseGuard(): void {
+  useEffect(
+    () =>
+      window.edion.onCloseRequested(async () => {
+        if (activeJob(useExports.getState().jobs)) {
+          const answer = await confirm({
+            title: 'An export is still running',
+            message: 'Closing Edion now cancels it.',
+            confirmLabel: 'Close anyway',
+            danger: true
+          })
+          if (answer !== 'confirm') return
+        }
+        if (await confirmDiscard()) window.edion.confirmClose()
+      }),
+    []
+  )
 }

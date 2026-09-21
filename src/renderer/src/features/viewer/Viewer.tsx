@@ -11,6 +11,7 @@ import {
 } from '@/engine/playback/session'
 import { useEditor } from '@/store/editor'
 import { IconButton } from '@/ui/IconButton'
+import { AudioMeter } from './AudioMeter'
 import { Gizmo } from './Gizmo'
 
 const QUALITIES = [
@@ -102,6 +103,7 @@ export function Viewer() {
           </IconButton>
         </div>
         <div className="flex items-center justify-end gap-2">
+          <AudioMeter />
           <IconButton label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={() => setMuted(!muted)}>
             {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </IconButton>

@@ -8,6 +8,8 @@ import { confirm } from '@/store/feedback'
 import { addAssetToTimeline, importMedia, importMediaDialog, relinkMedia } from '@/store/projectActions'
 import { Button } from '@/ui/Button'
 import { EmptyState } from '@/ui/Panel'
+import { useProxies } from '@/engine/proxies'
+import { VoiceoverButton } from './Voiceover'
 
 export const MEDIA_DRAG_TYPE = 'application/x-edion-media'
 
@@ -35,9 +37,12 @@ export function MediaLibrary() {
         <span className="text-2xs text-faint">
           {media.length > 0 ? `${media.length} item${media.length > 1 ? 's' : ''}` : ''}
         </span>
-        <Button onClick={() => void importMediaDialog()}>
-          <Upload size={13} /> Import
-        </Button>
+        <span className="flex gap-1.5">
+          <VoiceoverButton />
+          <Button onClick={() => void importMediaDialog()}>
+            <Upload size={13} /> Import
+          </Button>
+        </span>
       </div>
       {media.length === 0 ? (
         <EmptyState
@@ -59,6 +64,7 @@ export function MediaLibrary() {
 function MediaCard({ asset, missing }: { asset: MediaAsset; missing: boolean }) {
   const fps = useEditor((s) => s.project.settings.fps)
   const thumbnail = useThumbnail(asset, missing)
+  const proxy = useProxies((s) => s.byPath[asset.path])
 
   async function remove(): Promise<void> {
     const used = useEditor
@@ -96,6 +102,20 @@ function MediaCard({ asset, missing }: { asset: MediaAsset; missing: boolean }) 
           <FileAudio size={20} className="text-clip-audio" />
         ) : (
           <ImageIcon size={20} className="text-faint" />
+        )}
+        {proxy && (
+          <span
+            className="absolute top-1 left-1 rounded bg-black/70 px-1 text-[9px] font-medium tracking-wide text-white uppercase"
+            title={
+              proxy === 'pending'
+                ? 'Creating a lightweight preview copy…'
+                : proxy === 'failed'
+                  ? 'Proxy creation failed; using the original'
+                  : 'Previewing from a lightweight proxy. Exports always use the original.'
+            }
+          >
+            {proxy === 'pending' ? 'Proxy…' : proxy === 'failed' ? 'No proxy' : 'Proxy'}
+          </span>
         )}
         {asset.duration > 0 && (
           <span className="absolute right-1 bottom-1 rounded bg-black/70 px-1 font-mono text-[10px] text-white">

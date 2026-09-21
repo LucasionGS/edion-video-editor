@@ -5,7 +5,7 @@ import { IPC, SETTINGS_IPC, type AppSettings } from '@shared/ipc'
 import { resolveFfmpeg } from './ffmpeg/paths'
 import { probe } from './ffmpeg/probe'
 import { readFileSync } from 'node:fs'
-import { onExportUpdate, registerExportIpc, startExport } from './export'
+import { cancelAllExports, onExportUpdate, registerExportIpc, startExport } from './export'
 import { allowFile, registerFileProtocolScheme, registerLibraryIpc } from './library'
 import { registerProjectIpc } from './project'
 import { getSettings, updateSettings } from './settings'
@@ -62,6 +62,9 @@ function captureForDebug(win: BrowserWindow): void {
   })
 }
 
+/** Installed fonts for the text tools, and the microphone for voiceovers. Everything else is denied. */
+const ALLOWED_PERMISSIONS = new Set<string>(['local-fonts', 'media'])
+
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1440,
@@ -83,6 +86,23 @@ function createMainWindow(): BrowserWindow {
   })
   // Test runs (screenshots) must never put a window on the user's screen.
   if (!process.env['EDION_SCREENSHOT']) win.once('ready-to-show', () => win.show())
+  // Closing goes through the renderer so unsaved work can be saved or knowingly discarded.
+  let closeConfirmed = false
+  win.on('close', (event) => {
+    if (closeConfirmed || process.env['EDION_SCREENSHOT']) return
+    event.preventDefault()
+    win.webContents.send(IPC.closeRequested)
+  })
+  ipcMain.on(IPC.closeConfirmed, (event) => {
+    if (event.sender !== win.webContents) return
+    closeConfirmed = true
+    win.close()
+  })
+  win.on('closed', () => {
+    if (BrowserWindow.getAllWindows().every((w) => !w.isVisible())) cancelAllExports()
+  })
+  // If the page is broken it can never confirm; never trap the user in the window.
+  win.webContents.on('render-process-gone', () => (closeConfirmed = true))
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -116,6 +136,11 @@ function registerIpc(): void {
     const res = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
     return res.canceled ? null : (res.filePath ?? null)
   })
+  ipcMain.handle(IPC.dialogChooseFolder, async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    const res = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+    return res.canceled ? null : (res.filePaths[0] ?? null)
+  })
   ipcMain.handle(IPC.dialogOpenText, async (e, extensions: string[]) => {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const res = await dialog.showOpenDialog(win, {
@@ -144,6 +169,10 @@ function registerIpc(): void {
   registerProjectIpc()
   registerLibraryIpc()
 }
+
+// Automated runs must stay silent as well as invisible.
+if (process.env['EDION_SCREENSHOT'] || process.env['EDION_HEADLESS_EXPORT'])
+  app.commandLine.appendSwitch('mute-audio')
 
 registerFileProtocolScheme()
 
@@ -200,11 +229,9 @@ if (!isTestRun && !app.requestSingleInstanceLock()) {
     await getSettings()
     // Lets the text tools list installed fonts (Local Font Access API).
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) =>
-      callback((permission as string) === 'local-fonts')
+      callback(ALLOWED_PERMISSIONS.has(permission))
     )
-    session.defaultSession.setPermissionCheckHandler(
-      (_wc, permission) => (permission as string) === 'local-fonts'
-    )
+    session.defaultSession.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission))
     registerIpc()
     if (runHeadlessExport()) return
     createMainWindow()

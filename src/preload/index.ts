@@ -12,6 +12,12 @@ import { mediaApi } from './media'
 
 const api: EdionApi = {
   platform: process.platform,
+  onCloseRequested: (cb) => {
+    const listener = (): void => cb()
+    ipcRenderer.on(IPC.closeRequested, listener)
+    return () => ipcRenderer.removeListener(IPC.closeRequested, listener)
+  },
+  confirmClose: () => ipcRenderer.send(IPC.closeConfirmed),
   ffmpeg: {
     info: () => ipcRenderer.invoke(IPC.ffmpegInfo),
     probe: (path) => ipcRenderer.invoke(IPC.ffmpegProbe, path)
@@ -19,6 +25,7 @@ const api: EdionApi = {
   dialog: {
     openMedia: () => ipcRenderer.invoke(IPC.dialogOpenMedia),
     saveFile: (defaultName, extensions) => ipcRenderer.invoke(IPC.dialogSaveFile, defaultName, extensions),
+    chooseFolder: () => ipcRenderer.invoke(IPC.dialogChooseFolder),
     openText: (extensions) => ipcRenderer.invoke(IPC.dialogOpenText, extensions),
     saveText: (defaultName, extensions, content) =>
       ipcRenderer.invoke(IPC.dialogSaveText, defaultName, extensions, content)

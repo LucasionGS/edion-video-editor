@@ -30,6 +30,9 @@ export interface MediaProbe {
 
 /** API exposed on `window.edion` in the editor window. */
 export interface EdionApi {
+  /** The window is about to close; call `confirmClose()` once unsaved work has been dealt with. */
+  onCloseRequested(cb: () => void): () => void
+  confirmClose(): void
   platform: string
   ffmpeg: {
     info(): Promise<FfmpegInfo>
@@ -38,6 +41,7 @@ export interface EdionApi {
   dialog: {
     openMedia(): Promise<string[]>
     saveFile(defaultName: string, extensions: string[]): Promise<string | null>
+    chooseFolder(): Promise<string | null>
     openText(extensions: string[]): Promise<{ path: string; content: string } | null>
     saveText(defaultName: string, extensions: string[], content: string): Promise<string | null>
   }
@@ -60,6 +64,9 @@ export const IPC = {
   dialogOpenMedia: 'dialog:openMedia',
   dialogSaveFile: 'dialog:saveFile',
   dialogOpenText: 'dialog:openText',
+  dialogChooseFolder: 'dialog:chooseFolder',
+  closeRequested: 'app:closeRequested',
+  closeConfirmed: 'app:closeConfirmed',
   dialogSaveText: 'dialog:saveText'
 } as const
 

@@ -95,7 +95,7 @@ export function Timeline() {
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-surface">
+    <section className="isolate flex h-full min-h-0 flex-col bg-surface">
       <Toolbar scrollRef={scrollRef} />
       <div
         ref={scrollRef}

@@ -145,3 +145,8 @@ export function registerExportIpc(): void {
 
 /** True while something is rendering, so quitting can warn first. */
 export const hasActiveExports = (): boolean => jobs.some((j) => !isFinished(j))
+
+/** Stops everything; hidden export windows would otherwise keep the app alive after the editor closed. */
+export function cancelAllExports(): void {
+  for (const job of [...jobs]) finish(job, 'cancelled')
+}

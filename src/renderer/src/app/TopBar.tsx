@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Download, Film, FilePlus2, FolderOpen, Save } from 'lucide-react'
+import { Download, Film, FilePlus2, FolderOpen, Loader2, Save, Settings } from 'lucide-react'
+import { activeJob, useExports } from '@/store/exports'
 import { edit, isDirty, useEditor } from '@/store/editor'
 import { newProject, openProject, saveProject } from '@/store/projectActions'
 import { Button } from '@/ui/Button'
 import { IconButton } from '@/ui/IconButton'
 
-export function TopBar({ onExport }: { onExport: () => void }) {
+export function TopBar({ onExport, onSettings }: { onExport: () => void; onSettings: () => void }) {
   const name = useEditor((s) => s.project.name)
   const dirty = useEditor((s) => isDirty(s))
   const settings = useEditor((s) => s.project.settings)
@@ -56,9 +57,30 @@ export function TopBar({ onExport }: { onExport: () => void }) {
         </span>
       </div>
 
+      <ExportIndicator onClick={onExport} />
+      <IconButton label="Settings" onClick={onSettings}>
+        <Settings size={15} />
+      </IconButton>
       <Button variant="primary" onClick={onExport}>
         <Download size={14} /> Export
       </Button>
     </header>
+  )
+}
+
+/** Compact progress of the running export; click to open the queue. */
+function ExportIndicator({ onClick }: { onClick: () => void }) {
+  const job = useExports((s) => activeJob(s.jobs))
+  if (!job) return null
+  const percent = job.totalFrames > 0 ? Math.round((job.frame / job.totalFrames) * 100) : 0
+  return (
+    <button
+      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-hover hover:text-fg"
+      onClick={onClick}
+      title={`Exporting ${job.name}`}
+    >
+      <Loader2 size={13} className="animate-spin text-accent" />
+      <span className="font-mono tabular-nums">{job.phase === 'audio' ? 'Audio…' : `${percent}%`}</span>
+    </button>
   )
 }
