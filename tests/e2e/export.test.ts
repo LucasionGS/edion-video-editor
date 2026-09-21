@@ -191,6 +191,47 @@ describe('export', () => {
     expect(psnr(output, fixture)).toBeGreaterThan(30)
   })
 
+  it('composites still images', () => {
+    const still = join(root, 'tests/fixtures/still.png')
+    execFileSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=0x00ff00:s=400x400',
+      '-frames:v',
+      '1',
+      still
+    ])
+    const { project } = baseProject()
+    const asset: MediaAsset = {
+      id: newId(),
+      kind: 'image',
+      name: 'still',
+      path: still,
+      size: 0,
+      duration: 0,
+      width: 400,
+      height: 400,
+      hasAudio: false
+    }
+    addMedia(project, asset)
+    const clip = clipFromMedia(asset, 0, FPS)
+    clip.duration = 30
+    insertClipAuto(project, clip)
+    writeFileSync(join(root, 'tests/fixtures/still.edion'), serializeProject(project))
+    const output = exportProject(project, 'still')
+    // A square still is fitted to the frame height and centred: green in the middle, video at the sides.
+    const [r, g, b] = pixel(output, 10, 640, 360)
+    expect(g).toBeGreaterThan(200)
+    expect(Math.max(r, b)).toBeLessThan(60)
+    const [r2, g2, b2] = pixel(output, 45, 640, 360)
+    expect(g2 > 200 && Math.max(r2, b2) < 60).toBe(false)
+  })
+
   it('renders cuts, transitions, overlays and effects', () => {
     const { project, clip } = baseProject()
     const rightId = splitClip(project, clip.id, 60)!

@@ -56,6 +56,27 @@ export function getFilmstrip(path: string): LoadedFilmstrip | null {
   return typeof cached === 'object' ? cached : null
 }
 
+const stills = new Map<string, HTMLImageElement | 'loading' | 'none'>()
+
+/** A still image for drawing clip thumbnails (2D canvas only, so the custom protocol is fine here). */
+export function getStill(path: string): HTMLImageElement | null {
+  const cached = stills.get(path)
+  if (!cached) {
+    stills.set(path, 'loading')
+    void window.edion.library
+      .fileUrl(path)
+      .then(async (url) => {
+        const image = new Image()
+        image.src = url
+        await image.decode()
+        stills.set(path, image)
+        bump()
+      })
+      .catch(() => stills.set(path, 'none'))
+  }
+  return typeof cached === 'object' ? cached : null
+}
+
 export function getPeaks(path: string): Peaks | null {
   const cached = peaks.get(path)
   if (!cached) {

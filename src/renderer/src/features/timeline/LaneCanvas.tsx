@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { clipEnd, findMedia } from '@core/index'
 import type { Clip, Project, Track } from '@core/index'
 import { useEditor } from '@/store/editor'
-import { getFilmstrip, getPeaks, HEADER_WIDTH, useTimelineView } from './view'
+import { getFilmstrip, getPeaks, getStill, HEADER_WIDTH, useTimelineView } from './view'
 
 const WAVE_COLOR = 'rgba(255,255,255,0.55)'
 
@@ -73,6 +73,26 @@ function drawFilmstrip(
   }
 }
 
+/** Repeats the still along the clip, like a filmstrip of one picture. */
+function drawStill(
+  ctx: CanvasRenderingContext2D,
+  project: Project,
+  clip: Clip & { mediaId: string },
+  x0: number,
+  x1: number,
+  clipX: number,
+  top: number,
+  height: number
+): void {
+  const media = findMedia(project, clip.mediaId)
+  const image = media && getStill(media.path)
+  if (!image || !image.naturalHeight) return
+  const tileWidth = Math.max(8, (height * image.naturalWidth) / image.naturalHeight)
+  const first = Math.max(0, Math.floor((x0 - clipX) / tileWidth))
+  for (let i = first; clipX + i * tileWidth < x1; i++)
+    ctx.drawImage(image, clipX + i * tileWidth, top, tileWidth, height)
+}
+
 /** One viewport-wide canvas per lane paints the filmstrips and waveforms of whatever clips are in view. */
 export function LaneCanvas({ track }: { track: Track }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -117,6 +137,8 @@ export function LaneCanvas({ track }: { track: Track }) {
             height - inset * 2 - 14 - filmHeight,
             zoom
           )
+      } else if (clip.type === 'image') {
+        drawStill(ctx, project, clip, x0, x1, clipX, inset + 14, height - inset * 2 - 14)
       } else if (clip.type === 'audio') {
         drawWaveform(ctx, project, clip, x0, x1, clipX, inset + 14, height - inset * 2 - 16, zoom)
       }

@@ -63,6 +63,8 @@ export class Compositor {
   private readonly layerTextures = new Map<Id, CachedTexture>()
   private readonly imageTextures = new Map<Id, CachedTexture>()
   private readonly rasterTextures = new Map<string, CachedTexture>()
+  /** Clips whose upload failed, so the error is logged once instead of every frame. */
+  private readonly failedClips = new Set<Id>()
 
   constructor(
     readonly canvas: HTMLCanvasElement | OffscreenCanvas,
@@ -289,7 +291,15 @@ export class Compositor {
 
   /** Draws a layer plus its effects. Returns the target holding the result (`primary` or `scratch`). */
   private renderLayer(layer: Layer, source: FrameSource, primary: Target, scratch: Target): Target | null {
-    const content = this.layerContent(layer, source)
+    let content: CachedTexture | null = null
+    try {
+      content = this.layerContent(layer, source)
+    } catch (error) {
+      // One layer that cannot be uploaded must not take the whole frame down with it.
+      if (!this.failedClips.has(layer.clip.id))
+        console.error(`[compositor] cannot draw "${layer.clip.name}"`, error)
+      this.failedClips.add(layer.clip.id)
+    }
     if (!content || layer.transform.opacity <= 0) return null
     const { gl } = this
     this.cleared(primary)

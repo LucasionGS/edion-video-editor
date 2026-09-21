@@ -12,7 +12,7 @@ export const getPlayer = (): Player | null => player
 export function attachPlayer(canvas: HTMLCanvasElement): () => void {
   player = new Player(
     canvas,
-    { media: window.edion.media, library: window.edion.library, proxies: editorProxies },
+    { media: window.edion.media, proxies: editorProxies },
     {
       getProject: () => useEditor.getState().project,
       getPlayhead: () => useEditor.getState().playhead,
