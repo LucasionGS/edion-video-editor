@@ -40,6 +40,7 @@ export class SceneRenderer implements FrameSource {
 
   constructor(canvas: HTMLCanvasElement | OffscreenCanvas, api: EngineApi, flipOutput = false) {
     this.compositor = new Compositor(canvas, flipOutput)
+    this.compositor.onRestored = () => this.onContentReady?.()
     this.pool = new MediaPool(api.media, api.proxies)
     this.images = new ImageStore(api.library, () => this.onContentReady?.())
   }

@@ -80,6 +80,33 @@ export class Compositor {
     if (!gl) throw new Error('WebGL2 is not available')
     this.gl = gl
 
+    this.initState()
+    // A GPU reset or driver hiccup loses the context; recover instead of showing a dead canvas.
+    if ('addEventListener' in canvas) {
+      canvas.addEventListener('webglcontextlost', this.onContextLost)
+      canvas.addEventListener('webglcontextrestored', this.onContextRestored)
+    }
+  }
+
+  /** Called after a lost context came back and everything was rebuilt; repaint now. */
+  onRestored?: () => void
+  private lost = false
+
+  private readonly onContextLost = (event: Event): void => {
+    // Without preventDefault the browser never restores the context.
+    event.preventDefault()
+    this.lost = true
+  }
+
+  private readonly onContextRestored = (): void => {
+    this.lost = false
+    this.forgetResources()
+    this.initState()
+    this.onRestored?.()
+  }
+
+  private initState(): void {
+    const { gl } = this
     const vao = gl.createVertexArray()
     gl.bindVertexArray(vao)
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer())
@@ -88,6 +115,17 @@ export class Compositor {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
     gl.disable(gl.DEPTH_TEST)
+  }
+
+  /** Drops every handle without touching GL (they died with the context) so they are recreated lazily. */
+  private forgetResources(): void {
+    this.programs.clear()
+    this.targets = []
+    this.layerTextures.clear()
+    this.imageTextures.clear()
+    this.rasterTextures.clear()
+    this.width = 0
+    this.height = 0
   }
 
   /** Output size in render pixels for a project of `width`×`height` at `scale`. */
@@ -110,6 +148,7 @@ export class Compositor {
 
   render(scene: Scene, source: FrameSource): void {
     const { gl } = this
+    if (this.lost || gl.isContextLost()) return
     this.tick++
     if (this.width === 0) this.setSize(scene.width, scene.height)
     let [accRead, accWrite, layerA, layerB, fromTarget, toTarget] = this.targets as [
@@ -225,8 +264,25 @@ export class Compositor {
     this.layerTextures.delete(clipId)
   }
 
+  /**
+   * Frees GPU memory but keeps the context alive: a canvas hands out the same context for its whole
+   * life, so killing it would break any later Compositor on this canvas (React StrictMode remounts).
+   */
   dispose(): void {
-    this.gl.getExtension('WEBGL_lose_context')?.loseContext()
+    const { gl } = this
+    if ('removeEventListener' in this.canvas) {
+      this.canvas.removeEventListener('webglcontextlost', this.onContextLost)
+      this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
+    }
+    for (const { program } of this.programs.values()) gl.deleteProgram(program)
+    for (const target of this.targets) {
+      gl.deleteFramebuffer(target.framebuffer)
+      gl.deleteTexture(target.texture)
+    }
+    for (const cache of [this.layerTextures, this.imageTextures, this.rasterTextures]) {
+      for (const cached of cache.values()) gl.deleteTexture(cached.texture)
+    }
+    this.forgetResources()
   }
 
   // ── Layers ──────────────────────────────────────────────────────────────────────────────────────
