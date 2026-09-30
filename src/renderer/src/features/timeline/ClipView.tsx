@@ -4,7 +4,7 @@ import type { Clip } from '@core/index'
 import { clipMenuItems, selectForMenu } from '@/store/clipMenu'
 import { useEditor } from '@/store/editor'
 import { openContextMenu } from '@/ui/ContextMenu'
-import { beginClipMove, beginClipTrim, razorAt } from './clipDrag'
+import { beginClipMove, beginClipTrim, beginSlipOrSlide, razorAt } from './clipDrag'
 import { useTimelineView } from './view'
 
 const look: Record<Clip['type'], { color: string; Icon: typeof Film }> = {
@@ -37,6 +37,10 @@ export const ClipView = memo(function ClipView({
   missing
 }: Props) {
   const { color, Icon } = look[clip.type]
+  const tool = useEditor((s) => s.tool)
+  const bodyCursor =
+    tool === 'razor' ? 'cursor-crosshair' : tool === 'slip' || tool === 'slide' ? 'cursor-ew-resize' : ''
+  const edgeCursor = tool === 'roll' ? 'cursor-col-resize' : 'cursor-ew-resize'
   const width = Math.max(2, clip.duration * zoom)
   const frameAt = (e: React.PointerEvent | React.MouseEvent): number => {
     const left = e.currentTarget.getBoundingClientRect().left
@@ -46,7 +50,7 @@ export const ClipView = memo(function ClipView({
   return (
     <div
       data-clip-id={clip.id}
-      className={`group/clip absolute top-0.5 overflow-hidden rounded-[5px] ${locked ? 'opacity-60' : ''} ${
+      className={`group/clip absolute top-0.5 overflow-hidden rounded-[5px] ${bodyCursor} ${locked ? 'opacity-60' : ''} ${
         selected
           ? 'z-[3] ring-2 ring-white'
           : partnerSelected
@@ -68,7 +72,9 @@ export const ClipView = memo(function ClipView({
       onPointerDown={(e) => {
         if (e.button !== 0 || locked) return
         e.stopPropagation()
-        if (useEditor.getState().tool === 'razor') return razorAt(clip.id, frameAt(e))
+        const { tool } = useEditor.getState()
+        if (tool === 'razor') return razorAt(clip.id, frameAt(e))
+        if (tool === 'slip' || tool === 'slide') return beginSlipOrSlide(e, clip.id, tool)
         beginClipMove(e, clip.id)
       }}
       onPointerMove={(e) => {
@@ -96,11 +102,11 @@ export const ClipView = memo(function ClipView({
       {!locked && width > 14 && (
         <>
           <div
-            className="absolute inset-y-0 left-0 z-[4] w-1.5 cursor-ew-resize bg-white/0 group-hover/clip:bg-white/70"
+            className={`absolute inset-y-0 left-0 z-[4] w-1.5 ${edgeCursor} bg-white/0 ${tool === 'ripple' ? 'group-hover/clip:bg-amber-300/80' : 'group-hover/clip:bg-white/70'}`}
             onPointerDown={(e) => e.button === 0 && beginClipTrim(e, clip.id, 'start')}
           />
           <div
-            className="absolute inset-y-0 right-0 z-[4] w-1.5 cursor-ew-resize bg-white/0 group-hover/clip:bg-white/70"
+            className={`absolute inset-y-0 right-0 z-[4] w-1.5 ${edgeCursor} bg-white/0 ${tool === 'ripple' ? 'group-hover/clip:bg-amber-300/80' : 'group-hover/clip:bg-white/70'}`}
             onPointerDown={(e) => e.button === 0 && beginClipTrim(e, clip.id, 'end')}
           />
         </>

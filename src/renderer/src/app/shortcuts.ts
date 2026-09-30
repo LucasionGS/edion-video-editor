@@ -9,12 +9,13 @@ import {
   deleteSelection,
   duplicateSelection,
   paste,
+  rippleTrimToPlayhead,
   selectAll,
   setRangeEdge,
   splitAtPlayhead,
   toggleLink
 } from '@/store/commands'
-import { redo, select, setZoom, undo, useEditor } from '@/store/editor'
+import { redo, select, setZoom, TOOLS, undo, useEditor } from '@/store/editor'
 import { newProject, openProject, saveProject } from '@/store/projectActions'
 
 export interface Command {
@@ -102,19 +103,26 @@ export const COMMANDS: Command[] = [
     }
   },
 
-  {
-    id: 'toolSelect',
-    label: 'Select tool',
+  ...TOOLS.map((tool): Command => ({
+    id: tool.id === 'select' ? 'toolSelect' : tool.id === 'razor' ? 'toolRazor' : `tool:${tool.id}`,
+    label: tool.label,
     group: 'Timeline',
-    keys: ['v'],
-    run: () => useEditor.setState({ tool: 'select' })
+    keys: [tool.key],
+    run: () => useEditor.setState({ tool: tool.id })
+  })),
+  {
+    id: 'rippleTrimStart',
+    label: 'Ripple trim start to playhead',
+    group: 'Editing',
+    keys: ['q'],
+    run: () => rippleTrimToPlayhead('start')
   },
   {
-    id: 'toolRazor',
-    label: 'Razor tool',
-    group: 'Timeline',
-    keys: ['c'],
-    run: () => useEditor.setState({ tool: 'razor' })
+    id: 'rippleTrimEnd',
+    label: 'Ripple trim end to playhead',
+    group: 'Editing',
+    keys: ['w'],
+    run: () => rippleTrimToPlayhead('end')
   },
   {
     id: 'linkedSelection',

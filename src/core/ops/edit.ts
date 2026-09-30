@@ -12,7 +12,8 @@ import { animatablesOf, clipEnd, findClip, findTrack, isFree, sourceHandles } fr
 
 const EPSILON = 1e-6
 
-function normalizeTrack(track: Track): void {
+/** Restores the track invariants after an edit (sorted clips, only valid transitions). */
+export function normalizeTrack(track: Track): void {
   track.clips.sort((a, b) => a.start - b.start)
   track.transitions = track.transitions.filter((t) => {
     const left = track.clips.find((c) => c.id === t.leftClipId)
@@ -25,7 +26,7 @@ function normalizeTrack(track: Track): void {
   })
 }
 
-function clampFades(clip: Clip): void {
+export function clampFades(clip: Clip): void {
   if (!isAudibleClip(clip)) return
   clip.fadeIn = Math.min(clip.fadeIn, clip.duration)
   clip.fadeOut = Math.min(clip.fadeOut, clip.duration - clip.fadeIn)

@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import {
+  ArrowLeftRight,
+  BetweenHorizontalStart,
   Captions,
+  ChevronsLeftRight,
+  Columns2,
   Film,
   Link2,
   MousePointer2,
@@ -14,7 +18,7 @@ import {
   ZoomOut
 } from 'lucide-react'
 import { addTrack, projectDuration } from '@core/index'
-import { edit, MAX_ZOOM, MIN_ZOOM, redo, setZoom, undo, useEditor } from '@/store/editor'
+import { edit, MAX_ZOOM, MIN_ZOOM, redo, setZoom, TOOLS, undo, useEditor, type Tool } from '@/store/editor'
 import { addAssetToTimeline, importMedia } from '@/store/projectActions'
 import { deleteSelection, splitAtPlayhead } from '@/store/commands'
 import { IconButton } from '@/ui/IconButton'
@@ -141,8 +145,10 @@ export function Timeline() {
             if ((e.target as HTMLElement).closest('[data-ruler], button, input')) return e.preventDefault()
             if (e.clientX - scrollRef.current!.getBoundingClientRect().left < HEADER_WIDTH)
               return e.preventDefault()
-            seek(frameFromEvent(e.clientX))
-            openContextMenu(e, emptyAreaMenuItems())
+            const frame = frameFromEvent(e.clientX)
+            seek(frame)
+            const lane = (e.target as HTMLElement).closest<HTMLElement>('[data-track-lane]')
+            openContextMenu(e, emptyAreaMenuItems(lane?.dataset['trackLane'], frame))
           }}
           onPointerDown={(e) => {
             // Empty space only: clips, the ruler and the track headers handle their own presses.
@@ -233,6 +239,15 @@ function Guides() {
   )
 }
 
+const TOOL_ICONS: Record<Tool, typeof Scissors> = {
+  select: MousePointer2,
+  razor: Scissors,
+  ripple: BetweenHorizontalStart,
+  roll: Columns2,
+  slip: ChevronsLeftRight,
+  slide: ArrowLeftRight
+}
+
 function Toolbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
   const tool = useEditor((s) => s.tool)
   const ripple = useEditor((s) => s.ripple)
@@ -262,20 +277,19 @@ function Toolbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | nu
         <Redo2 size={15} />
       </IconButton>
       {divider}
-      <IconButton
-        label="Select tool (V)"
-        active={tool === 'select'}
-        onClick={() => useEditor.setState({ tool: 'select' })}
-      >
-        <MousePointer2 size={15} />
-      </IconButton>
-      <IconButton
-        label="Razor tool (C)"
-        active={tool === 'razor'}
-        onClick={() => useEditor.setState({ tool: 'razor' })}
-      >
-        <Scissors size={15} />
-      </IconButton>
+      {TOOLS.map((t) => {
+        const Icon = TOOL_ICONS[t.id]
+        return (
+          <IconButton
+            key={t.id}
+            label={`${t.label} (${t.key.toUpperCase()}): ${t.hint}`}
+            active={tool === t.id}
+            onClick={() => useEditor.setState({ tool: t.id })}
+          >
+            <Icon size={15} />
+          </IconButton>
+        )
+      })}
       {divider}
       <IconButton label="Split at playhead (S)" onClick={splitAtPlayhead}>
         <SquareSplitHorizontal size={15} />

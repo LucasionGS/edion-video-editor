@@ -3,7 +3,17 @@ import type { Draft } from 'immer'
 import { createProject, DEFAULT_SNAP_SETTINGS, History, TIME_DISPLAYS, withLinked } from '@core/index'
 import type { Clip, Id, Project, SnapSettings, TimeDisplay } from '@core/index'
 
-export type Tool = 'select' | 'razor'
+export type Tool = 'select' | 'razor' | 'ripple' | 'roll' | 'slip' | 'slide'
+
+/** Timeline tools, in toolbar order. `key` is the default shortcut. */
+export const TOOLS: ReadonlyArray<{ id: Tool; label: string; key: string; hint: string }> = [
+  { id: 'select', label: 'Select tool', key: 'v', hint: 'Move clips and trim their edges' },
+  { id: 'razor', label: 'Razor tool', key: 'c', hint: 'Click a clip to cut it' },
+  { id: 'ripple', label: 'Ripple edit tool', key: 'b', hint: 'Trim an edge; later clips follow' },
+  { id: 'roll', label: 'Rolling edit tool', key: 'r', hint: 'Drag a cut between two clips' },
+  { id: 'slip', label: 'Slip tool', key: 'y', hint: 'Drag a clip to change which part of its source plays' },
+  { id: 'slide', label: 'Slide tool', key: 'u', hint: 'Drag a clip between its neighbours' }
+]
 
 export interface EditorState {
   project: Project

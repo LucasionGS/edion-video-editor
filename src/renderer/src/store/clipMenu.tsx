@@ -2,6 +2,7 @@ import {
   AlignCenterHorizontal,
   AlignCenterVertical,
   AudioLines,
+  BetweenHorizontalStart,
   ClipboardPaste,
   Copy,
   CopyPlus,
@@ -19,11 +20,13 @@ import {
 } from 'lucide-react'
 import {
   alignedPosition,
+  closeAllGaps,
   defaultTransform,
   detachAudio,
   evaluate,
   findClip,
   frameScale,
+  gapAt,
   isVisualClip,
   setValueAt
 } from '@core/index'
@@ -33,6 +36,7 @@ import { naturalSize } from '@/engine/layerSize'
 import type { MenuItem } from '@/ui/ContextMenu'
 import { editClips, localFrame } from './clipEdits'
 import {
+  closeGapAt,
   copySelection,
   cutSelection,
   deleteSelection,
@@ -270,10 +274,26 @@ export function clipMenuItems(): MenuItem[] {
   return items
 }
 
-/** Menu for empty timeline/viewer space. */
-export function emptyAreaMenuItems(): MenuItem[] {
-  const { clipboard } = useEditor.getState()
+/** Menu for empty timeline/viewer space; `trackId`/`frame` locate a click on a timeline lane. */
+export function emptyAreaMenuItems(trackId?: Id, frame?: number): MenuItem[] {
+  const { clipboard, project } = useEditor.getState()
+  const track = trackId ? project.tracks.find((t) => t.id === trackId) : undefined
+  const gap = track && frame !== undefined && !track.locked ? gapAt(track, frame) : null
   return [
+    ...(gap && track
+      ? [
+          {
+            label: `Close gap (${formatFrames(gap.end - gap.start, project.settings.fps)})`,
+            icon: <BetweenHorizontalStart size={13} />,
+            onSelect: () => closeGapAt(track.id, frame!)
+          },
+          {
+            label: 'Close all gaps on this track',
+            onSelect: () => edit('Close gaps', (draft) => closeAllGaps(draft, track.id))
+          },
+          { type: 'separator' as const }
+        ]
+      : []),
     {
       label: 'Paste at playhead',
       icon: <ClipboardPaste size={13} />,
@@ -289,6 +309,8 @@ export function emptyAreaMenuItems(): MenuItem[] {
     }
   ]
 }
+
+const formatFrames = (frames: number, fps: number): string => `${(frames / fps).toFixed(2)} s`
 
 /** Right-click rule used everywhere: a clip outside the selection becomes the selection; inside keeps the group. */
 export function selectForMenu(clipId: Id): void {

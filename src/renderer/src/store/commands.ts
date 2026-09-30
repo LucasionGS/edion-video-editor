@@ -1,5 +1,6 @@
 import {
   clipAtFrame,
+  closeGap,
   DEFAULT_TRANSITION_SECONDS,
   deleteClips,
   findClip,
@@ -7,9 +8,11 @@ import {
   linkClips,
   pasteClips,
   removeTransition,
+  rippleTrim,
   setTransition,
   splitClip,
-  unlinkClips
+  unlinkClips,
+  withLinked
 } from '@core/index'
 import type { Clip, Id, ProjectSettings } from '@core/index'
 import { edit, editTargets, select, selectTransition, useEditor } from './editor'
@@ -27,6 +30,38 @@ export function splitAtPlayhead(): void {
   edit('Split clips', (draft) => {
     for (const id of targets) splitClip(draft, id, playhead, linkedSelection)
   })
+}
+
+/**
+ * Q / W: ripple-trims the clips under the playhead so they start (or end) there, closing the gap. Works on
+ * the selected clips when there are any, otherwise on every unlocked track.
+ */
+export function rippleTrimToPlayhead(edge: 'start' | 'end'): void {
+  const { project, playhead, selection, linkedSelection } = state()
+  const under = project.tracks.flatMap((t) => {
+    const clip = t.locked ? undefined : clipAtFrame(t, playhead)
+    return clip && playhead > clip.start ? [clip.id] : []
+  })
+  const targets = selection.length ? under.filter((id) => selection.includes(id)) : under
+  if (targets.length === 0) return
+  let jumpTo: number | null = null
+  edit(edge === 'start' ? 'Ripple trim start' : 'Ripple trim end', (draft) => {
+    const done = new Set<Id>()
+    for (const id of targets) {
+      // A linked partner was already trimmed together with its clip.
+      if (done.has(id)) continue
+      for (const linked of linkedSelection ? withLinked(draft, [id]) : [id]) done.add(linked)
+      const start = findClip(draft, id)?.clip.start ?? playhead
+      rippleTrim(draft, id, edge, playhead, linkedSelection)
+      if (edge === 'start') jumpTo = Math.min(jumpTo ?? Infinity, start)
+    }
+  })
+  if (jumpTo !== null) useEditor.setState({ playhead: jumpTo })
+}
+
+/** Removes the empty space at `frame` on a track. */
+export function closeGapAt(trackId: Id, frame: number): void {
+  edit('Close gap', (draft) => void closeGap(draft, trackId, frame))
 }
 
 export function deleteSelection(ripple = state().ripple): void {
