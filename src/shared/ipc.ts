@@ -1,5 +1,7 @@
 /** Typed contract between main, preload and renderer. */
 
+import type { ExportFormatId, VideoCodec } from './formats'
+
 export interface FfmpegInfo {
   ffmpegPath: string
   ffprobePath: string
@@ -80,12 +82,16 @@ export const IPC = {
 export type ExportQuality = 'high' | 'medium' | 'low'
 
 export interface ExportSettings {
+  /** Container and codecs; see EXPORT_FORMATS. */
+  format: ExportFormatId
+  /** For still formats: the frame to render. */
+  frame?: number
   /** Output size; must have the project's aspect ratio. */
   width: number
   height: number
   /** Frame range to export, or null for the whole timeline. */
   range: { in: number; out: number } | null
-  /** 'auto' prefers hardware, 'software' forces libx264, otherwise an encoder name. */
+  /** 'auto' prefers hardware, 'software' forces the software encoder, otherwise an encoder name. */
   encoder: string
   quality: ExportQuality
   audioBitrateKbps: number
@@ -102,6 +108,7 @@ export interface EncoderInfo {
   name: string
   label: string
   hardware: boolean
+  codec: VideoCodec
 }
 
 /** An encoder plus everything needed to invoke it. */
@@ -139,7 +146,9 @@ export interface EncoderStart {
   height: number
   fps: string
   outputPath: string
-  encoder: ResolvedEncoder
+  format: ExportFormatId
+  /** Null for audio-only formats. */
+  encoder: ResolvedEncoder | null
   quality: ExportQuality
   /** Raw interleaved f32le stereo mixdown, or null for a silent project. */
   audio: { path: string; sampleRate: number; bitrateKbps: number } | null
@@ -149,7 +158,7 @@ export interface EncoderStart {
 export interface EdionExportApi {
   media: EdionApi['media']
   library: Pick<EdionMediaLibraryApi, 'fileUrl' | 'proxy'>
-  /** The request plus encoders to try, in order (the last one is always software). */
+  /** The request plus encoders to try, in order (the last one is software; none for audio-only formats). */
   getJob(): Promise<{ request: ExportRequest; encoders: ResolvedEncoder[] }>
   beginAudio(): Promise<string>
   appendAudio(interleaved: Float32Array): Promise<void>
@@ -184,7 +193,8 @@ export interface EdionApiExport {
   list(): Promise<ExportJobState[]>
   clearFinished(): Promise<void>
   reveal(path: string): Promise<void>
-  encoders(): Promise<EncoderInfo[]>
+  /** Working encoders for a codec, hardware first; empty when this FFmpeg cannot encode it. */
+  encoders(codec: VideoCodec): Promise<EncoderInfo[]>
   onUpdate(cb: (jobs: ExportJobState[]) => void): () => void
 }
 

@@ -9,6 +9,7 @@ import {
   type ExportRequest,
   type ResolvedEncoder
 } from '@shared/ipc'
+import { exportFormat, VIDEO_CODEC_LABELS, type VideoCodec } from '@shared/formats'
 import { detectEncoders } from './ffmpeg/hwdetect'
 import { loadRendererPage } from './windows'
 
@@ -97,17 +98,19 @@ export function startExport(request: ExportRequest): string {
 }
 
 function encodersFor(choice: string, all: ResolvedEncoder[]): ResolvedEncoder[] {
-  const software = all[all.length - 1]!
-  if (choice === 'software') return [software]
-  const preferred = choice === 'auto' ? all[0]! : (all.find((e) => e.name === choice) ?? all[0]!)
-  return preferred === software ? [software] : [preferred, software]
+  if (all.length === 0) return []
+  const software = all.find((e) => !e.hardware)
+  const fallback = software ? [software] : []
+  if (choice === 'software' && software) return fallback
+  const preferred = all.find((e) => e.name === choice) ?? all[0]!
+  return preferred === software ? fallback : [preferred, ...fallback]
 }
 
 export function registerExportIpc(): void {
   ipcMain.handle(EXPORT_IPC.start, (_e, request: ExportRequest) => startExport(request))
   ipcMain.handle(EXPORT_IPC.list, () => snapshot())
-  ipcMain.handle(EXPORT_IPC.encoders, async (): Promise<EncoderInfo[]> =>
-    (await detectEncoders()).map(({ name, label, hardware }) => ({ name, label, hardware }))
+  ipcMain.handle(EXPORT_IPC.encoders, async (_e, codec: VideoCodec): Promise<EncoderInfo[]> =>
+    (await detectEncoders(codec)).map(({ name, label, hardware }) => ({ name, label, hardware, codec }))
   )
   ipcMain.handle(EXPORT_IPC.reveal, (_e, path: string) => shell.showItemInFolder(path))
   ipcMain.handle(EXPORT_IPC.clear, () => {
@@ -118,10 +121,11 @@ export function registerExportIpc(): void {
   ipcMain.handle(EXPORT_IPC.getJob, async (_e, id: string) => {
     const job = jobs.find((j) => j.state.id === id)
     if (!job) throw new Error(`Unknown export job ${id}`)
-    return {
-      request: job.request,
-      encoders: encodersFor(job.request.settings.encoder, await detectEncoders())
-    }
+    const { video } = exportFormat(job.request.settings.format)
+    const encoders = video ? encodersFor(job.request.settings.encoder, await detectEncoders(video)) : []
+    if (video && encoders.length === 0)
+      throw new Error(`This FFmpeg build cannot encode ${VIDEO_CODEC_LABELS[video]}.`)
+    return { request: job.request, encoders }
   })
 
   ipcMain.on(EXPORT_IPC.progress, (_e, id: string, progress: ExportProgress) => {

@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, CircleAlert, FolderSearch, Loader2, X } from 'lucide-react'
 import { formatClock, projectDuration, serializeProject } from '@core/index'
+import {
+  DEFAULT_FORMAT,
+  EXPORT_FORMATS,
+  exportFormat,
+  VIDEO_CODEC_LABELS,
+  type AudioCodec,
+  type ExportFormatId
+} from '@shared/formats'
 import type { EncoderInfo, ExportJobState, ExportQuality } from '@shared/ipc'
 import { useEditor } from '@/store/editor'
 import { useExports } from '@/store/exports'
@@ -16,14 +24,33 @@ const QUALITIES: ReadonlyArray<{ value: ExportQuality; label: string }> = [
   { value: 'medium', label: 'Medium' },
   { value: 'low', label: 'Small file' }
 ]
+const PRORES_QUALITIES: ReadonlyArray<{ value: ExportQuality; label: string }> = [
+  { value: 'high', label: '422 HQ' },
+  { value: 'medium', label: '422' },
+  { value: 'low', label: '422 LT' }
+]
+const FORMAT_GROUPS = ['Video', 'Animation', 'Audio', 'Image'] as const
+const AUDIO_LABELS: Record<AudioCodec, string> = {
+  aac: 'AAC',
+  opus: 'Opus',
+  mp3: 'MP3',
+  pcm: 'PCM 16-bit (uncompressed)',
+  flac: 'FLAC (lossless)'
+}
+
+/** Kept for the session, so the dialog reopens with the last format. */
+let lastFormat: ExportFormatId = DEFAULT_FORMAT
 
 export function ExportDialog({ onClose }: { onClose: () => void }) {
   const project = useEditor((s) => s.project)
+  const playhead = useEditor((s) => s.playhead)
   const jobs = useExports((s) => s.jobs)
   const missing = useEditor((s) => s.missingMedia.length)
   const duration = projectDuration(project)
   const { width, height, fps } = project.settings
 
+  const [formatId, setFormatId] = useState<ExportFormatId>(lastFormat)
+  const format = exportFormat(formatId)
   const [encoders, setEncoders] = useState<EncoderInfo[] | null>(null)
   const [encoder, setEncoder] = useState('auto')
   const [quality, setQuality] = useState<ExportQuality>('high')
@@ -31,7 +58,16 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [useRange, setUseRange] = useState(Boolean(project.range))
   const [audioBitrate, setAudioBitrate] = useState(192)
 
-  useEffect(() => void window.edion.export.encoders().then(setEncoders), [])
+  useEffect(() => {
+    lastFormat = formatId
+    const codec = exportFormat(formatId).video
+    setEncoders(null)
+    setEncoder('auto')
+    if (!codec) return setEncoders([])
+    let current = true
+    void window.edion.export.encoders(codec).then((list) => current && setEncoders(list))
+    return () => void (current = false)
+  }, [formatId])
 
   const sizes = useMemo(() => {
     // Same aspect ratio as the project, never upscaled beyond 2x, always even.
@@ -49,17 +85,24 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   }, [width, height])
   const size = sizes.find((s) => s.height === outHeight) ?? sizes[0]!
   const range = useRange && project.range ? project.range : null
-  const frames = range ? range.out - range.in : duration
+  const frames = format.still ? 1 : range ? range.out - range.in : duration
   const hardware = encoders?.find((e) => e.hardware)
+  const unavailable = format.video !== null && encoders !== null && encoders.length === 0
+  const showEncoder = format.video === 'h264' || format.video === 'hevc' || format.video === 'av1'
+  const showQuality = format.video !== null && format.video !== 'png'
 
   async function start(): Promise<void> {
-    const outputPath = await window.edion.dialog.saveFile(`${project.name}.mp4`, ['mp4'])
+    const outputPath = await window.edion.dialog.saveFile(`${project.name}.${format.extension}`, [
+      format.extension
+    ])
     if (!outputPath) return
     await window.edion.export.start({
       projectJson: serializeProject(project),
       name: outputPath.split(/[\\/]/).pop() ?? project.name,
       outputPath,
       settings: {
+        format: format.id,
+        frame: playhead,
         width: size.width,
         height: size.height,
         range,
@@ -68,57 +111,97 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         audioBitrateKbps: audioBitrate
       }
     })
-    toast('Export started. You can keep editing.')
+    toast(format.still ? 'Saving the frame…' : 'Export started. You can keep editing.')
   }
 
   return (
-    <Modal title="Export video" onClose={onClose}>
+    <Modal title="Export" onClose={onClose}>
       <div className="flex flex-col gap-2.5 p-4">
-        <Field label="Format">
-          <span className="text-xs">MP4 · H.264 + AAC</span>
-        </Field>
-        <Field label="Resolution" hint={`${size.width}×${size.height}`}>
-          <Select value={size.height} onChange={(e) => setOutHeight(Number(e.target.value))}>
-            {sizes.map((s) => (
-              <option key={s.height} value={s.height}>
-                {s.label}
-                {s.height === height ? ' (project)' : ''}
-              </option>
+        <Field label="Format" hint={format.hint}>
+          <Select value={formatId} onChange={(e) => setFormatId(e.target.value as ExportFormatId)}>
+            {FORMAT_GROUPS.map((group) => (
+              <optgroup key={group} label={group}>
+                {EXPORT_FORMATS.filter((f) => f.group === group).map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </Select>
         </Field>
-        <Field label="Quality">
-          <Segmented value={quality} options={QUALITIES} onChange={setQuality} />
-        </Field>
-        <Field label="Encoder" hint={encoders ? undefined : 'Detecting…'}>
-          <Select value={encoder} onChange={(e) => setEncoder(e.target.value)}>
-            <option value="auto">Automatic{hardware ? ` (${hardware.label})` : ' (software)'}</option>
-            {encoders?.map((e) => (
-              <option key={e.name} value={e.hardware ? e.name : 'software'}>
-                {e.label}
+        {format.video && (
+          <Field label="Resolution" hint={`${size.width}×${size.height}`}>
+            <Select value={size.height} onChange={(e) => setOutHeight(Number(e.target.value))}>
+              {sizes.map((s) => (
+                <option key={s.height} value={s.height}>
+                  {s.label}
+                  {s.height === height ? ' (project)' : ''}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {showQuality && (
+          <Field label="Quality">
+            <Segmented
+              value={quality}
+              options={format.video === 'prores' ? PRORES_QUALITIES : QUALITIES}
+              onChange={setQuality}
+            />
+          </Field>
+        )}
+        {showEncoder && (
+          <Field label="Encoder" hint={encoders ? undefined : 'Detecting…'}>
+            <Select value={encoder} onChange={(e) => setEncoder(e.target.value)} disabled={unavailable}>
+              <option value="auto">
+                Automatic{hardware ? ` (${hardware.label})` : encoders?.length ? ' (software)' : ''}
               </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Audio">
-          <Select value={audioBitrate} onChange={(e) => setAudioBitrate(Number(e.target.value))}>
-            {[128, 192, 256, 320].map((kbps) => (
-              <option key={kbps} value={kbps}>
-                AAC {kbps} kbps
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Range">
-          <Segmented
-            value={range ? 'range' : 'all'}
-            options={[
-              { value: 'all', label: 'Entire timeline' },
-              { value: 'range', label: project.range ? 'In – Out' : 'In – Out (set with I / O)' }
-            ]}
-            onChange={(v) => setUseRange(v === 'range' && Boolean(project.range))}
-          />
-        </Field>
+              {encoders?.map((e) => (
+                <option key={e.name} value={e.hardware ? e.name : 'software'}>
+                  {e.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {format.audio && (
+          <Field label="Audio">
+            {format.audioBitrate ? (
+              <Select value={audioBitrate} onChange={(e) => setAudioBitrate(Number(e.target.value))}>
+                {[128, 192, 256, 320].map((kbps) => (
+                  <option key={kbps} value={kbps}>
+                    {AUDIO_LABELS[format.audio!]} {kbps} kbps
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <span className="text-xs">{AUDIO_LABELS[format.audio]}</span>
+            )}
+          </Field>
+        )}
+        {format.still ? (
+          <Field label="Frame">
+            <span className="text-xs">At the playhead · {formatClock(playhead / fps, 2)}</span>
+          </Field>
+        ) : (
+          <Field label="Range">
+            <Segmented
+              value={range ? 'range' : 'all'}
+              options={[
+                { value: 'all', label: 'Entire timeline' },
+                { value: 'range', label: project.range ? 'In – Out' : 'In – Out (set with I / O)' }
+              ]}
+              onChange={(v) => setUseRange(v === 'range' && Boolean(project.range))}
+            />
+          </Field>
+        )}
+        {unavailable && (
+          <p className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+            The FFmpeg in use cannot encode {VIDEO_CODEC_LABELS[format.video!]}. Choose another format, or
+            point Settings → FFmpeg at a build that includes it.
+          </p>
+        )}
         {missing > 0 && (
           <p className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
             {missing} media file{missing > 1 ? 's are' : ' is'} missing. Clips that use{' '}
@@ -127,9 +210,11 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         )}
         <div className="mt-2 flex items-center justify-between border-t border-line pt-3">
           <span className="text-2xs text-faint">
-            {formatClock(frames / fps, 2)} · {frames} frames · {Number(fps.toFixed(3))} fps
+            {format.still
+              ? `${size.width}×${size.height} still`
+              : `${formatClock(frames / fps, 2)} · ${frames} frames · ${Number(fps.toFixed(3))} fps`}
           </span>
-          <Button variant="primary" disabled={frames <= 0} onClick={() => void start()}>
+          <Button variant="primary" disabled={frames <= 0 || unavailable} onClick={() => void start()}>
             Export…
           </Button>
         </div>

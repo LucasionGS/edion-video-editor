@@ -39,7 +39,7 @@ const api: EdionApi = {
     list: () => ipcRenderer.invoke(EXPORT_IPC.list),
     clearFinished: () => ipcRenderer.invoke(EXPORT_IPC.clear),
     reveal: (path) => ipcRenderer.invoke(EXPORT_IPC.reveal, path),
-    encoders: () => ipcRenderer.invoke(EXPORT_IPC.encoders),
+    encoders: (codec) => ipcRenderer.invoke(EXPORT_IPC.encoders, codec),
     onUpdate: (cb) => {
       const listener = (_e: unknown, jobs: ExportJobState[]): void => cb(jobs)
       ipcRenderer.on(EXPORT_IPC.update, listener)

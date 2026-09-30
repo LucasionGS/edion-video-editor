@@ -5,7 +5,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { contextBridge, ipcRenderer } from 'electron'
-import { EXPORT_IPC, LIBRARY_IPC, type EdionExportApi } from '@shared/ipc'
+import { ffmpegArgs } from '@shared/ffmpegArgs'
+import { EXPORT_IPC, IPC, LIBRARY_IPC, type EdionExportApi, type FfmpegInfo } from '@shared/ipc'
 import { mediaApi } from './media'
 
 const jobId = decodeURIComponent(
@@ -62,53 +63,13 @@ const api: EdionExportApi = {
       )
   },
 
-  async startEncoder({ width, height, fps, outputPath: out, encoder: enc, quality, audio }) {
-    outputPath = out
+  async startEncoder(start) {
+    outputPath = start.outputPath
     stderrTail = ''
-    const args = [
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      '-y',
-      ...enc.globalArgs,
-      '-f',
-      'rawvideo',
-      '-pix_fmt',
-      'rgba',
-      '-s',
-      `${width}x${height}`,
-      '-r',
-      fps,
-      '-i',
-      'pipe:0'
-    ]
-    if (audio) args.push('-f', 'f32le', '-ar', String(audio.sampleRate), '-ac', '2', '-i', audio.path)
-    args.push('-map', '0:v:0')
-    if (audio) args.push('-map', '1:a:0', '-c:a', 'aac', '-b:a', `${audio.bitrateKbps}k`)
-    args.push(
-      // The compositor works in sRGB/BT.709; convert and tag explicitly so players don't have to guess.
-      '-vf',
-      `scale=out_color_matrix=bt709:out_range=tv${enc.filterSuffix}`,
-      '-c:v',
-      enc.name,
-      ...enc.codecArgs[quality]
-    )
-    if (enc.pixelFormat) args.push('-pix_fmt', enc.pixelFormat)
-    args.push(
-      '-colorspace',
-      'bt709',
-      '-color_primaries',
-      'bt709',
-      '-color_trc',
-      'bt709',
-      '-color_range',
-      'tv',
-      '-movflags',
-      '+faststart',
-      '-shortest',
-      out
-    )
-    const child = spawn(enc.ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'] })
+    const args = ffmpegArgs(start)
+    const ffmpeg =
+      start.encoder?.ffmpegPath ?? ((await ipcRenderer.invoke(IPC.ffmpegInfo)) as FfmpegInfo).ffmpegPath
+    const child = spawn(ffmpeg, args, { stdio: ['pipe', 'ignore', 'pipe'] })
     encoder = child
     child.stderr?.on('data', (d: Buffer) => (stderrTail = (stderrTail + d.toString()).slice(-1500)))
     // EPIPE when FFmpeg dies early; the exit code carries the real error.

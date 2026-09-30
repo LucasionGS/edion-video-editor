@@ -82,9 +82,9 @@ function baseProject(): { project: Project; asset: MediaAsset; clip: VideoClip }
   return { project, asset, clip }
 }
 
-function exportProject(project: Project, name: string): string {
+function exportProject(project: Project, name: string, extension = 'mp4', format?: string): string {
   const projectPath = join(workDir, `${name}.edion`)
-  const output = join(workDir, `${name}.mp4`)
+  const output = join(workDir, `${name}.${extension}`)
   writeFileSync(projectPath, serializeProject(project))
   // CI runners restrict user namespaces and npm cannot install Chromium's setuid sandbox helper, so the
   // app would abort at startup. The pages under test are our own, so the sandbox buys nothing here.
@@ -94,17 +94,22 @@ function exportProject(project: Project, name: string): string {
     ...(process.env['EDION_E2E_NO_GPU'] ? ['--disable-gpu'] : [])
   ]
   const run = spawnSync(electron, [root, ...flags], {
-    env: { ...process.env, EDION_HEADLESS_EXPORT: `${projectPath}::${output}`, EDION_DEBUG_EXPORT: '1' },
+    env: {
+      ...process.env,
+      EDION_HEADLESS_EXPORT: `${projectPath}::${output}${format ? `::software::${format}` : ''}`,
+      EDION_DEBUG_EXPORT: '1'
+    },
     timeout: 150_000,
     encoding: 'utf8'
   })
   if (run.status !== 0) throw new Error(`export failed (${run.status})\n${run.stdout}\n${run.stderr}`)
   // EDION_E2E_KEEP=<dir> keeps the rendered files for inspection.
-  if (process.env['EDION_E2E_KEEP']) copyFileSync(output, join(process.env['EDION_E2E_KEEP'], `${name}.mp4`))
+  if (process.env['EDION_E2E_KEEP'])
+    copyFileSync(output, join(process.env['EDION_E2E_KEEP'], `${name}.${extension}`))
   return output
 }
 
-function probe(path: string): { video: Record<string, string>; audio?: Record<string, string> } {
+function probe(path: string): { video?: Record<string, string>; audio?: Record<string, string> } {
   const { streams } = JSON.parse(
     execFileSync(
       'ffprobe',
@@ -113,7 +118,7 @@ function probe(path: string): { video: Record<string, string>; audio?: Record<st
     )
   ) as { streams: Array<Record<string, string>> }
   return {
-    video: streams.find((s) => s['codec_type'] === 'video')!,
+    video: streams.find((s) => s['codec_type'] === 'video'),
     audio: streams.find((s) => s['codec_type'] === 'audio')
   }
 }
@@ -142,7 +147,20 @@ function pixel(path: string, frame: number, x: number, y: number): [number, numb
 function psnr(a: string, b: string): number {
   const { stderr } = spawnSync(
     'ffmpeg',
-    ['-hide_banner', '-i', a, '-i', b, '-lavfi', '[0:v][1:v]psnr=shortest=1', '-f', 'null', '-'],
+    [
+      '-hide_banner',
+      '-i',
+      a,
+      '-i',
+      b,
+      // Compare frame n with frame n: containers with millisecond timestamps (WebM) would otherwise pair
+      // every third frame with its predecessor.
+      '-lavfi',
+      '[0:v]settb=1/30,setpts=N[a];[1:v]settb=1/30,setpts=N[b];[a][b]psnr=shortest=1',
+      '-f',
+      'null',
+      '-'
+    ],
     { encoding: 'utf8' }
   )
   return Number(stderr.match(/average:([\d.]+)/)?.[1] ?? 0)
@@ -158,11 +176,11 @@ describe('export', () => {
   it('reproduces an untouched clip faithfully', () => {
     const output = exportProject(baseProject().project, 'passthrough')
     const { video, audio } = probe(output)
-    expect(video['codec_name']).toBe('h264')
-    expect([video['width'], video['height']]).toEqual([1280, 720])
-    expect(video['r_frame_rate']).toBe(`${FPS}/1`)
-    expect(Number(video['nb_read_frames'])).toBe(SECONDS * FPS)
-    expect(video['color_space']).toBe('bt709')
+    expect(video!['codec_name']).toBe('h264')
+    expect([video!['width'], video!['height']]).toEqual([1280, 720])
+    expect(video!['r_frame_rate']).toBe(`${FPS}/1`)
+    expect(Number(video!['nb_read_frames'])).toBe(SECONDS * FPS)
+    expect(video!['color_space']).toBe('bt709')
     expect(audio?.['codec_name']).toBe('aac')
     expect(Math.abs(Number(audio?.['duration']) - SECONDS)).toBeLessThan(0.1)
     expect(psnr(output, fixture)).toBeGreaterThan(35)
@@ -193,7 +211,7 @@ describe('export', () => {
     clip.duration = FPS
     const output = exportProject(project, 'prores')
     const { video, audio } = probe(output)
-    expect(Number(video['nb_read_frames'])).toBe(FPS)
+    expect(Number(video!['nb_read_frames'])).toBe(FPS)
     expect(audio?.['codec_name']).toBe('aac')
     expect(psnr(output, fixture)).toBeGreaterThan(30)
   })
@@ -256,7 +274,7 @@ describe('export', () => {
     // Kept around as a handy project for manual and screenshot checks.
     writeFileSync(join(root, 'tests/fixtures/demo.edion'), serializeProject(project))
     const output = exportProject(project, 'composited')
-    expect(Number(probe(output).video['nb_read_frames'])).toBe(SECONDS * FPS)
+    expect(Number(probe(output).video!['nb_read_frames'])).toBe(SECONDS * FPS)
 
     // The white square sits 400px left of centre while it lasts…
     const [r, g, b] = pixel(output, 30, 240, 360)
@@ -269,5 +287,60 @@ describe('export', () => {
     expect(Math.max(gr, gg, gb) - Math.min(gr, gg, gb)).toBeLessThan(12)
     const [cr, cg, cb] = pixel(output, 100, 900, 500)
     expect(Math.max(cr, cg, cb) - Math.min(cr, cg, cb)).toBeGreaterThan(12)
+  })
+})
+
+describe('formats', () => {
+  /** One second of the test pattern with its tone. */
+  function short(): Project {
+    const { project, clip } = baseProject()
+    clip.duration = FPS
+    return project
+  }
+
+  it.each([
+    ['hevc', 'mp4', 'mp4-hevc', 'hevc', 'aac'],
+    ['vp9', 'webm', 'webm-vp9', 'vp9', 'opus'],
+    ['prores', 'mov', 'mov-prores', 'prores', 'pcm_s16le']
+  ])('encodes %s video', (name, extension, format, videoCodec, audioCodec) => {
+    const output = exportProject(short(), `format-${name}`, extension, format)
+    const { video, audio } = probe(output)
+    expect(video?.['codec_name']).toBe(videoCodec)
+    expect(Number(video?.['nb_read_frames'])).toBe(FPS)
+    expect(audio?.['codec_name']).toBe(audioCodec)
+    expect(psnr(output, fixture)).toBeGreaterThan(30)
+  })
+
+  it('encodes an animated GIF without sound', () => {
+    const { video, audio } = probe(exportProject(short(), 'format-gif', 'gif'))
+    expect(video?.['codec_name']).toBe('gif')
+    expect(Number(video?.['nb_read_frames'])).toBe(FPS)
+    expect(audio).toBeUndefined()
+  })
+
+  it.each([
+    ['mp3', 'mp3'],
+    ['wav', 'pcm_s16le'],
+    ['flac', 'flac']
+  ])('exports only the sound as %s', (extension, codec) => {
+    const { video, audio } = probe(exportProject(short(), `format-audio-${extension}`, extension))
+    expect(video).toBeUndefined()
+    expect(audio?.['codec_name']).toBe(codec)
+    expect(Math.abs(Number(audio?.['duration']) - 1)).toBeLessThan(0.1)
+  })
+
+  it('saves a single frame as PNG', () => {
+    const { project } = baseProject()
+    const square = createShapeClip(0, FPS, 'rect')
+    square.size = [200, 200]
+    square.fill = '#ff0000'
+    insertClipAuto(project, square)
+    const output = exportProject(project, 'format-png', 'png')
+    const { video } = probe(output)
+    expect(video?.['codec_name']).toBe('png')
+    expect([video?.['width'], video?.['height']]).toEqual([1280, 720])
+    const [r, g, b] = pixel(output, 0, 640, 360)
+    expect(r).toBeGreaterThan(240)
+    expect(Math.max(g, b)).toBeLessThan(15)
   })
 })

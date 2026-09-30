@@ -1,5 +1,6 @@
 import '@fontsource-variable/inter'
 import { fpsToRational, parseProject, projectDuration } from '@core/index'
+import { exportFormat } from '@shared/formats'
 import type { ResolvedEncoder } from '@shared/ipc'
 import { mixdown } from './engine/export/mixdown'
 import { SceneRenderer } from './engine/SceneRenderer'
@@ -19,8 +20,10 @@ async function run(): Promise<void> {
   const { request, encoders } = await api.getJob()
   const project = parseProject(request.projectJson)
   const { settings } = request
-  const from = Math.max(0, settings.range?.in ?? 0)
-  const to = Math.min(projectDuration(project), settings.range?.out ?? Infinity)
+  const format = exportFormat(settings.format)
+  const still = format.still ? Math.max(0, settings.frame ?? 0) : null
+  const from = still ?? Math.max(0, settings.range?.in ?? 0)
+  const to = still !== null ? still + 1 : Math.min(projectDuration(project), settings.range?.out ?? Infinity)
   const totalFrames = to - from
   if (totalFrames <= 0) throw new Error('There is nothing to export in the selected range.')
 
@@ -41,24 +44,35 @@ async function run(): Promise<void> {
 
   api.progress({ state: 'running', phase: 'audio', frame: 0, totalFrames })
   const audioPath = await api.beginAudio()
-  const hasAudio = await mixdown(
-    project,
-    renderer.pool,
-    from,
-    to,
-    (chunk) => api.appendAudio(chunk),
-    () => {},
-    () => aborted
-  )
+  const hasAudio =
+    format.audio !== null &&
+    (await mixdown(
+      project,
+      renderer.pool,
+      from,
+      to,
+      (chunk) => api.appendAudio(chunk),
+      (fraction) =>
+        !format.video &&
+        api.progress({
+          state: 'running',
+          phase: 'audio',
+          frame: Math.round(fraction * totalFrames),
+          totalFrames
+        }),
+      () => aborted
+    ))
   await api.endAudio()
   if (aborted) throw new Aborted()
+  if (!format.video && !hasAudio) throw new Error('There is no sound to export in the selected range.')
 
-  const encode = async (encoder: ResolvedEncoder): Promise<void> => {
+  const encode = async (encoder: ResolvedEncoder | null): Promise<void> => {
     await api.startEncoder({
       width,
       height,
       fps: fpsToRational(project.settings.fps),
       outputPath: request.outputPath,
+      format: format.id,
       encoder,
       quality: settings.quality,
       audio: hasAudio
@@ -66,7 +80,7 @@ async function run(): Promise<void> {
         : null
     })
     let lastReport = 0
-    for (let n = 0; n < totalFrames; n++) {
+    for (let n = 0; encoder && n < totalFrames; n++) {
       if (aborted) throw new Aborted()
       await renderer.drawExact(project, from + n)
       renderer.compositor.readPixels(pixels)
@@ -82,13 +96,14 @@ async function run(): Promise<void> {
       phase: 'finishing',
       frame: totalFrames,
       totalFrames,
-      encoder: encoder.label
+      encoder: encoder?.label
     })
     await api.finish()
   }
 
   let failure: unknown = null
-  for (const encoder of encoders) {
+  // Audio-only formats have no video encoder to try.
+  for (const encoder of format.video ? encoders : [null]) {
     try {
       await encode(encoder)
       failure = null
@@ -97,7 +112,7 @@ async function run(): Promise<void> {
       await api.discardEncoder()
       if (error instanceof Aborted) throw error
       // Hardware encoders fail in creative ways (driver limits, busy GPU); fall back to the next one.
-      console.warn(`[export] ${encoder.name} failed`, error)
+      console.warn(`[export] ${encoder?.name ?? 'audio'} failed`, error)
       failure = error
     }
   }

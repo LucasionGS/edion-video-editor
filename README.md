@@ -11,7 +11,7 @@ A sleek, cross-platform video editor built on Electron, WebGL and FFmpeg.
 - **Effects and transitions** — colour adjust, blur, sharpen, vignette, sepia, invert, pixelate, chroma key; blend modes; 13 transitions.
 - **Audio** — per-clip volume with keyframes, fades, detach audio, mute / solo, level meter, voiceover recording.
 - **Projects** — single `.edion` JSON file with linked media, atomic saves with a `.bak`, autosave and crash recovery, recent projects.
-- **Export** — MP4 (H.264 + AAC), resolution and quality presets, in/out range, background queue with progress / ETA / cancel, hardware encoding (NVENC, VAAPI, Quick Sync, AMF, VideoToolbox) with automatic software fallback.
+- **Export** — MP4 (H.264 / H.265 / AV1), WebM (VP9 + Opus), MOV (ProRes 422), animated GIF, audio only (MP3, WAV, FLAC) and PNG stills of the frame at the playhead; resolution and quality presets, in/out range, background queue with progress / ETA / cancel, hardware encoding (NVENC, VAAPI, Quick Sync, AMF, VideoToolbox) with automatic software fallback.
 
 ## Development
 
@@ -67,7 +67,7 @@ Timeline times are integer frames; source offsets are seconds. Every property th
 
 ### Testing without a window
 
-`EDION_HEADLESS_EXPORT=<project.edion>::<out.mp4>[::auto|software|<encoder>]` exports and exits.
+`EDION_HEADLESS_EXPORT=<project.edion>::<output>[::auto|software|<encoder>[::<format id>]]` exports and exits; the format follows the output's extension unless given.
 `EDION_SCREENSHOT=<png>` renders the editor offscreen (never shown, muted), optionally runs
 `EDION_DEBUG_SCRIPT=<js>` in the page, saves a screenshot and exits. `EDION_OPEN=<project>` opens a project.
 

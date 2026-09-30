@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, session, shell } from 'electron'
 import { IPC, SETTINGS_IPC, type AppSettings } from '@shared/ipc'
+import { formatForPath, type ExportFormatId } from '@shared/formats'
 import { resolveFfmpeg } from './ffmpeg/paths'
 import { probe } from './ffmpeg/probe'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
@@ -205,13 +206,15 @@ if (isAutomatedRun || process.env['EDION_SOFTWARE_GL']) {
 registerFileProtocolScheme()
 
 /**
- * `EDION_HEADLESS_EXPORT=<project.edion>::<output>[::<encoder>]` exports a project without UI and exits.
+ * `EDION_HEADLESS_EXPORT=<project.edion>::<output>[::<encoder>[::<format>]]` exports a project without UI and
+ * exits. The format defaults to the one matching the output's extension.
  * Used by the end-to-end export tests.
  */
 function runHeadlessExport(): boolean {
   const spec = process.env['EDION_HEADLESS_EXPORT']
   if (!spec) return false
-  const [projectPath, outputPath, encoder = 'software'] = spec.split('::')
+  const [projectPath, outputPath, encoder = 'software', format = formatForPath(outputPath ?? '')] =
+    spec.split('::')
   if (!projectPath || !outputPath) throw new Error('EDION_HEADLESS_EXPORT must be <project>::<output>')
   const projectJson = readFileSync(projectPath, 'utf8')
   const { settings, media } = JSON.parse(projectJson) as {
@@ -230,6 +233,8 @@ function runHeadlessExport(): boolean {
     name: 'headless',
     outputPath,
     settings: {
+      format: format as ExportFormatId,
+      frame: 0,
       width: settings.width,
       height: settings.height,
       range: null,
