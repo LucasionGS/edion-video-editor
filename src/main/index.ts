@@ -179,7 +179,10 @@ function registerIpc(): void {
 
 // Automated runs get a throwaway profile, so they can never touch the user's settings, recents, autosaves or cache.
 const isAutomatedRun = Boolean(process.env['EDION_SCREENSHOT'] || process.env['EDION_HEADLESS_EXPORT'])
-if (isAutomatedRun) {
+// `EDION_DRIVE=1`: a visible, audible window a script drives through `window.__edion` (demos, walkthroughs).
+// It gets a throwaway profile too.
+const isDrivenRun = Boolean(process.env['EDION_DRIVE'])
+if (isAutomatedRun || isDrivenRun) {
   // Chromium's helper processes can outlive us and re-create files, so exit-time cleanup is best effort;
   // sweep profiles left behind by earlier runs (old enough not to belong to a run in progress).
   for (const name of readdirSync(tmpdir())) {
@@ -246,7 +249,9 @@ function runHeadlessExport(): boolean {
   return true
 }
 
-const isTestRun = Boolean(process.env['EDION_HEADLESS_EXPORT'] ?? process.env['EDION_SCREENSHOT'])
+const isTestRun = Boolean(
+  process.env['EDION_HEADLESS_EXPORT'] ?? process.env['EDION_SCREENSHOT'] ?? process.env['EDION_DRIVE']
+)
 
 if (!isTestRun && !app.requestSingleInstanceLock()) {
   app.quit()
