@@ -1,5 +1,16 @@
 import { memo } from 'react'
-import { AudioLines, Captions, Film, ImageIcon, Link2, Pause, Rewind, Shapes, Type } from 'lucide-react'
+import {
+  AudioLines,
+  Captions,
+  Film,
+  ImageIcon,
+  Link2,
+  Pause,
+  Rewind,
+  Shapes,
+  SlidersHorizontal,
+  Type
+} from 'lucide-react'
 import type { Clip } from '@core/index'
 import { clipMenuItems, selectForMenu } from '@/store/clipMenu'
 import { useEditor } from '@/store/editor'
@@ -13,7 +24,8 @@ const look: Record<Clip['type'], { color: string; Icon: typeof Film }> = {
   image: { color: 'var(--color-clip-image)', Icon: ImageIcon },
   text: { color: 'var(--color-clip-text)', Icon: Type },
   shape: { color: 'var(--color-clip-text)', Icon: Shapes },
-  caption: { color: '#2b8a9e', Icon: Captions }
+  caption: { color: '#2b8a9e', Icon: Captions },
+  adjustment: { color: '#8a6d3b', Icon: SlidersHorizontal }
 }
 
 interface Props {

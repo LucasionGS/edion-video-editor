@@ -111,6 +111,10 @@ export function animatablesOf(clip: Clip): Animatable<AnimValue>[] {
     list.push(position, scale, rotation, opacity)
     for (const effect of clip.effects) list.push(...Object.values(effect.params))
   }
+  if (clip.type === 'adjustment') {
+    list.push(clip.opacity)
+    for (const effect of clip.effects) list.push(...Object.values(effect.params))
+  }
   if (isAudibleClip(clip)) list.push(clip.volume)
   return list
 }

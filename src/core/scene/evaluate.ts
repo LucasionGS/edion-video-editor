@@ -1,10 +1,12 @@
 import { evaluate } from '../keyframes/animatable'
 import type {
+  AdjustmentClip,
   AudibleClip,
   BlendMode,
   CaptionClip,
   Clip,
   Crop,
+  Effect,
   Id,
   Project,
   TextStyle,
@@ -34,6 +36,8 @@ export interface ResolvedTransform {
 export interface ResolvedEffect {
   type: string
   params: Record<string, number>
+  /** A file the effect needs (a LUT), if any. */
+  resource?: string
 }
 
 export interface Layer {
@@ -58,7 +62,20 @@ export interface TransitionNode {
   to: Layer
 }
 
-export type SceneNode = Layer | TransitionNode
+/** An adjustment layer: its effects run on everything composited so far. */
+export interface AdjustmentNode {
+  kind: 'adjustment'
+  clip: AdjustmentClip
+  localFrame: number
+  opacity: number
+  effects: ResolvedEffect[]
+}
+
+export type SceneNode = Layer | TransitionNode | AdjustmentNode
+
+/** The clip layers a node draws (none for an adjustment layer). */
+export const layersOf = (node: SceneNode): Layer[] =>
+  node.kind === 'layer' ? [node] : node.kind === 'transition' ? [node.from, node.to] : []
 
 export interface Scene {
   frame: number
@@ -72,6 +89,16 @@ export interface Scene {
 }
 
 const NO_CROP: Crop = { left: 0, top: 0, right: 0, bottom: 0 }
+
+function resolveEffects(effects: Effect[], localFrame: number): ResolvedEffect[] {
+  return effects
+    .filter((e) => e.enabled)
+    .map((e) => ({
+      type: e.type,
+      params: Object.fromEntries(Object.entries(e.params).map(([k, v]) => [k, evaluate(v, localFrame)])),
+      ...(e.resource ? { resource: e.resource } : {})
+    }))
+}
 
 function resolveLayer(project: Project, clip: VisualClip, frame: number): Layer {
   const localFrame = frame - clip.start
@@ -94,12 +121,7 @@ function resolveLayer(project: Project, clip: VisualClip, frame: number): Layer 
     },
     crop: 'crop' in clip ? clip.crop : NO_CROP,
     blendMode: clip.blendMode,
-    effects: clip.effects
-      .filter((e) => e.enabled)
-      .map((e) => ({
-        type: e.type,
-        params: Object.fromEntries(Object.entries(e.params).map(([k, v]) => [k, evaluate(v, localFrame)]))
-      }))
+    effects: resolveEffects(clip.effects, localFrame)
   }
   if (clip.type === 'video') {
     const media = findMedia(project, clip.mediaId)
@@ -160,6 +182,16 @@ export function evaluateScene(project: Project, frame: number): Scene {
     }
     const clip = track.clips.find((c) => frame >= c.start && frame < clipEnd(c))
     if (clip && isVisualClip(clip)) scene.nodes.push(resolveLayer(project, clip, frame))
+    else if (clip?.type === 'adjustment') {
+      const localFrame = frame - clip.start
+      scene.nodes.push({
+        kind: 'adjustment',
+        clip,
+        localFrame,
+        opacity: Math.max(0, Math.min(1, evaluate(clip.opacity, localFrame))),
+        effects: resolveEffects(clip.effects, localFrame)
+      })
+    }
   }
   return scene
 }

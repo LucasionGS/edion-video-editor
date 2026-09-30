@@ -7,6 +7,10 @@ export interface ParamSpec {
   step: number
   default: number
   unit?: string
+  /** A choice rather than a number: option i is stored as the value i. Not animatable. */
+  options?: readonly string[]
+  /** Measured in project pixels, so the compositor scales it with the render resolution. */
+  pixels?: boolean
 }
 
 export interface EffectSpec {
@@ -22,6 +26,24 @@ const amount = (label: string, def = 1, max = 1): ParamSpec => ({
   max,
   step: 0.01,
   default: def
+})
+
+const choice = (label: string, options: readonly string[], def = 0): ParamSpec => ({
+  label,
+  min: 0,
+  max: options.length - 1,
+  step: 1,
+  default: def,
+  options
+})
+const px = (label: string, def: number, max: number): ParamSpec => ({
+  label,
+  min: 0,
+  max,
+  step: 0.5,
+  default: def,
+  unit: 'px',
+  pixels: true
 })
 
 export const EFFECTS: readonly EffectSpec[] = [
@@ -40,7 +62,9 @@ export const EFFECTS: readonly EffectSpec[] = [
   {
     type: 'blur',
     label: 'Blur',
-    params: { radius: { label: 'Radius', min: 0, max: 100, step: 0.5, default: 12, unit: 'px' } }
+    params: {
+      radius: { label: 'Radius', min: 0, max: 100, step: 0.5, default: 12, unit: 'px', pixels: true }
+    }
   },
   { type: 'sharpen', label: 'Sharpen', params: { amount: amount('Amount', 0.5, 2) } },
   {
@@ -53,7 +77,9 @@ export const EFFECTS: readonly EffectSpec[] = [
   {
     type: 'pixelate',
     label: 'Pixelate',
-    params: { size: { label: 'Block size', min: 1, max: 120, step: 1, default: 16, unit: 'px' } }
+    params: {
+      size: { label: 'Block size', min: 1, max: 120, step: 1, default: 16, unit: 'px', pixels: true }
+    }
   },
   {
     type: 'chromaKey',
@@ -64,7 +90,60 @@ export const EFFECTS: readonly EffectSpec[] = [
       softness: amount('Softness', 0.1),
       spill: amount('Spill removal', 0.5)
     }
-  }
+  },
+  {
+    type: 'levels',
+    label: 'Levels',
+    params: {
+      blacks: { label: 'Black point', min: 0, max: 0.5, step: 0.01, default: 0 },
+      whites: { label: 'White point', min: 0.5, max: 1, step: 0.01, default: 1 },
+      gamma: { label: 'Gamma', min: 0.2, max: 3, step: 0.01, default: 1 }
+    }
+  },
+  {
+    type: 'mask',
+    label: 'Mask',
+    params: {
+      shape: choice('Shape', ['Rectangle', 'Ellipse'], 1),
+      x: { label: 'Centre X', min: -100, max: 100, step: 0.5, default: 0, unit: '%' },
+      y: { label: 'Centre Y', min: -100, max: 100, step: 0.5, default: 0, unit: '%' },
+      width: { label: 'Width', min: 1, max: 200, step: 0.5, default: 50, unit: '%' },
+      height: { label: 'Height', min: 1, max: 200, step: 0.5, default: 50, unit: '%' },
+      rotation: { label: 'Rotation', min: -180, max: 180, step: 1, default: 0, unit: '°' },
+      feather: px('Feather', 40, 500),
+      invert: choice('Keep', ['Inside', 'Outside'])
+    }
+  },
+  {
+    type: 'lumaKey',
+    label: 'Luma key',
+    params: {
+      threshold: amount('Threshold', 0.1),
+      softness: amount('Softness', 0.05, 0.5),
+      invert: choice('Remove', ['Dark', 'Bright'])
+    }
+  },
+  {
+    type: 'glow',
+    label: 'Glow',
+    params: {
+      threshold: amount('Threshold', 0.7),
+      radius: px('Radius', 20, 100),
+      intensity: amount('Intensity', 1, 3)
+    }
+  },
+  {
+    type: 'dropShadow',
+    label: 'Drop shadow',
+    params: {
+      distance: px('Distance', 12, 200),
+      angle: { label: 'Angle', min: -180, max: 180, step: 1, default: 45, unit: '°' },
+      blur: px('Softness', 12, 100),
+      opacity: amount('Opacity', 0.6)
+    }
+  },
+  { type: 'chromaticAberration', label: 'Chromatic aberration', params: { amount: px('Amount', 4, 30) } },
+  { type: 'grain', label: 'Film grain', params: { amount: amount('Amount', 0.25), size: px('Size', 1.5, 6) } }
 ]
 
 export const effectSpec = (type: string): EffectSpec | undefined => EFFECTS.find((e) => e.type === type)

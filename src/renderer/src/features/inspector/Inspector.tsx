@@ -21,14 +21,16 @@ import {
   detachAudio,
   EFFECTS,
   effectSpec,
+  defaultEffectParams,
   findClip,
+  hasEffects,
   isAudibleClip,
   isVisualClip,
   newId,
   setClipSpeed,
   setReversed
 } from '@core/index'
-import type { AnimationPreset, BlendMode, Clip, TextStyle, VisualClip } from '@core/index'
+import type { AdjustmentClip, AnimationPreset, BlendMode, Clip, TextStyle, VisualClip } from '@core/index'
 import { edit, select, useEditor } from '@/store/editor'
 import { editClips } from '@/store/clipEdits'
 import { insertHoldAtPlayhead, normalizeLoudness } from '@/store/commands'
@@ -86,7 +88,18 @@ export function Inspector() {
         </>
       )}
       {isVisualClip(clip) && <AnimateSection clip={clip} />}
-      {isVisualClip(clip) && <EffectsSection clip={clip} />}
+      {clip.type === 'adjustment' && (
+        <Section title="Adjustment layer">
+          <AnimNumberRow
+            clip={clip}
+            label="Opacity"
+            get={(c) => (c.type === 'adjustment' ? c.opacity : undefined)}
+            spec={{ ...percent, min: 0, max: 100 }}
+          />
+          <p className="text-2xs text-faint">Its effects apply to every track below it.</p>
+        </Section>
+      )}
+      {hasEffects(clip) && <EffectsSection clip={clip} />}
     </div>
   )
 }
@@ -629,10 +642,10 @@ function ShapeSection({ clip }: { clip: Extract<Clip, { type: 'shape' }> }) {
   )
 }
 
-function EffectsSection({ clip }: { clip: VisualClip }) {
+function EffectsSection({ clip }: { clip: VisualClip | AdjustmentClip }) {
   const [adding, setAdding] = useState(false)
-  const change = (label: string, fn: (c: VisualClip) => void): void =>
-    editClips([clip.id], label, (c) => isVisualClip(c) && fn(c))
+  const change = (label: string, fn: (c: VisualClip | AdjustmentClip) => void): void =>
+    editClips([clip.id], label, (c) => hasEffects(c) && fn(c))
   return (
     <Section
       title="Effects"
@@ -657,9 +670,7 @@ function EffectsSection({ clip }: { clip: VisualClip }) {
                       id: newId(),
                       type: spec.type,
                       enabled: true,
-                      params: Object.fromEntries(
-                        Object.entries(spec.params).map(([key, p]) => [key, { value: p.default }])
-                      )
+                      params: defaultEffectParams(spec)
                     })
                 )
               }}
@@ -700,23 +711,38 @@ function EffectsSection({ clip }: { clip: VisualClip }) {
               </IconButton>
             </header>
             <div className="flex flex-col gap-1">
-              {Object.entries(spec.params).map(([key, p]) => (
-                <AnimNumberRow
-                  key={key}
-                  clip={clip}
-                  label={p.label}
-                  get={(c) =>
-                    isVisualClip(c) ? c.effects.find((e) => e.id === effect.id)?.params[key] : undefined
-                  }
-                  spec={{
-                    min: p.min,
-                    max: p.max,
-                    step: p.step,
-                    precision: p.step < 1 ? 2 : 0,
-                    suffix: p.unit ? ` ${p.unit}`.replace(' °', '°') : ''
-                  }}
-                />
-              ))}
+              {Object.entries(spec.params).map(([key, p]) =>
+                p.options ? (
+                  <Row key={key} label={p.label}>
+                    <Segmented
+                      value={String(Math.round(effect.params[key]?.value ?? p.default))}
+                      options={p.options.map((label, i) => ({ value: String(i), label }))}
+                      onChange={(v) =>
+                        change(`Change ${p.label.toLowerCase()}`, (c) => {
+                          const target = c.effects.find((e) => e.id === effect.id)
+                          if (target) target.params[key] = { value: Number(v) }
+                        })
+                      }
+                    />
+                  </Row>
+                ) : (
+                  <AnimNumberRow
+                    key={key}
+                    clip={clip}
+                    label={p.label}
+                    get={(c) =>
+                      hasEffects(c) ? c.effects.find((e) => e.id === effect.id)?.params[key] : undefined
+                    }
+                    spec={{
+                      min: p.min,
+                      max: p.max,
+                      step: p.step,
+                      precision: p.step < 1 ? 2 : 0,
+                      suffix: p.unit ? ` ${p.unit}`.replace(' °', '°').replace(' %', '%') : ''
+                    }}
+                  />
+                )
+              )}
             </div>
           </div>
         )

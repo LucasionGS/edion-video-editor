@@ -1,5 +1,6 @@
 import { PROJECT_VERSION } from './schema'
 import type {
+  AdjustmentClip,
   AudioClip,
   CaptionClip,
   ImageClip,
@@ -182,5 +183,17 @@ export function createCaptionClip(start: number, duration: number, text: string)
     start,
     duration: Math.max(1, duration),
     text
+  }
+}
+
+export function createAdjustmentClip(start: number, fps: number): AdjustmentClip {
+  return {
+    id: newId(),
+    name: 'Adjustment layer',
+    type: 'adjustment',
+    start,
+    duration: Math.round(DEFAULT_STILL_SECONDS * fps),
+    opacity: { value: 1 },
+    effects: []
   }
 }

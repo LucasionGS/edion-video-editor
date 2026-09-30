@@ -1,5 +1,13 @@
 import { useState } from 'react'
-import { evaluate, evaluateScene, findClip, isVisualClip, setValueAt, snapToFrame } from '@core/index'
+import {
+  evaluate,
+  evaluateScene,
+  findClip,
+  isVisualClip,
+  layersOf,
+  setValueAt,
+  snapToFrame
+} from '@core/index'
 import type { Layer, Project, Vec2, VisualClip } from '@core/index'
 import { naturalSize } from '@/engine/layerSize'
 import { beginTransaction, commitTransaction, rollbackTransaction, select, useEditor } from '@/store/editor'
@@ -22,7 +30,7 @@ interface Props {
 }
 
 const layersAt = (project: Project, frame: number): Layer[] =>
-  evaluateScene(project, frame).nodes.flatMap((n) => (n.kind === 'layer' ? [n] : [n.from, n.to]))
+  evaluateScene(project, frame).nodes.flatMap(layersOf)
 
 /** Topmost layer under a point given in project pixels (origin top-left). */
 function hitTest(project: Project, frame: number, px: number, py: number): VisualClip | null {

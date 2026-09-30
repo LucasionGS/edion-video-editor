@@ -1,5 +1,5 @@
-import { evaluateScene, findMedia } from '@core/index'
-import type { Id, Layer, Project, Scene, SceneNode } from '@core/index'
+import { evaluateScene, findMedia, layersOf } from '@core/index'
+import type { Id, Layer, Project, Scene } from '@core/index'
 import type { EdionApi } from '@shared/ipc'
 import { Compositor, type FrameSource } from './compositor/Compositor'
 import { ClipVideoDecoder } from './decode/ClipVideoDecoder'
@@ -20,8 +20,6 @@ interface DecoderSlot {
   path: string
   lastUsed: number
 }
-
-const layersOf = (node: SceneNode): Layer[] => (node.kind === 'layer' ? [node] : [node.from, node.to])
 
 /**
  * Feeds the compositor: owns the per-clip decoders and stills. `draw` is the non-blocking

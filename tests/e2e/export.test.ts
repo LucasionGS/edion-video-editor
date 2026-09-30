@@ -6,6 +6,8 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   addMedia,
+  createAdjustmentClip,
+  EFFECTS,
   clipFromMedia,
   createProject,
   createShapeClip,
@@ -354,6 +356,61 @@ function channelVolume(path: string, channel: 0 | 1): number {
   const value = stderr.match(/mean_volume:\s*(-?[\d.]+|-inf)/)?.[1]
   return value === undefined || value === '-inf' ? -Infinity : Number(value)
 }
+
+describe('compositing', () => {
+  const effect = (type: string, params: Record<string, number>) => ({
+    id: newId(),
+    type,
+    enabled: true,
+    params: Object.fromEntries(Object.entries(params).map(([k, v]) => [k, { value: v }]))
+  })
+  const spread = ([r, g, b]: [number, number, number]): number => Math.max(r, g, b) - Math.min(r, g, b)
+
+  it('applies adjustment layers to everything below, masked', () => {
+    const { project } = baseProject()
+    const adjustment = createAdjustmentClip(0, FPS)
+    adjustment.duration = 60
+    adjustment.effects.push(
+      effect('color', { saturation: -1 }),
+      // Only the left half of the frame: a rectangle 100% wide centred at x = -50%.
+      effect('mask', { shape: 0, x: -50, y: 0, width: 100, height: 200, rotation: 0, feather: 0, invert: 0 })
+    )
+    insertClipAuto(project, adjustment)
+    const output = exportProject(project, 'adjustment')
+    // testsrc2 is colourful everywhere: left half grey, right half still in colour, and colour after the layer.
+    expect(spread(pixel(output, 30, 300, 500))).toBeLessThan(12)
+    expect(spread(pixel(output, 30, 900, 500))).toBeGreaterThan(12)
+    expect(spread(pixel(output, 90, 300, 500))).toBeGreaterThan(12)
+  })
+
+  it('draws drop shadows and masks on layers', () => {
+    const { project } = baseProject()
+    const square = createShapeClip(0, FPS, 'rect')
+    square.size = [200, 200]
+    square.fill = '#ffffff'
+    square.effects.push(
+      effect('dropShadow', { distance: 60, angle: 90, blur: 0, opacity: 1 }),
+      effect('mask', { shape: 1, x: 0, y: 0, width: 100, height: 100, rotation: 0, feather: 0, invert: 0 })
+    )
+    insertClipAuto(project, square)
+    const output = exportProject(project, 'shadow')
+    // White square in the middle; the shadow falls 60 px straight down, below its bottom edge (y = 460).
+    expect(Math.min(...pixel(output, 10, 640, 360))).toBeGreaterThan(235)
+    expect(Math.max(...pixel(output, 10, 640, 490))).toBeLessThan(20)
+    // The mask is an ellipse the size of the frame, so the far corner of the frame shows the video.
+    expect(spread(pixel(output, 10, 20, 700))).toBeGreaterThan(12)
+  })
+
+  it('renders every effect without shader errors', () => {
+    const { project, clip } = baseProject()
+    clip.duration = 10
+    clip.effects = EFFECTS.map((spec) =>
+      effect(spec.type, Object.fromEntries(Object.entries(spec.params).map(([k, p]) => [k, p.default])))
+    )
+    const { video } = probe(exportProject(project, 'all-effects'))
+    expect(Number(video?.['nb_read_frames'])).toBe(10)
+  })
+})
 
 describe('audio mix', () => {
   it('pans, applies track volume and filters like the preview', () => {

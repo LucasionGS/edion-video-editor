@@ -47,6 +47,7 @@ in vec2 v_uv;
 uniform sampler2D u_backdrop;
 uniform sampler2D u_layer;
 uniform int u_mode;
+uniform float u_opacity;
 out vec4 o_color;
 vec3 blend(vec3 b, vec3 s) {
   if (u_mode == 1) return min(b + s, 1.0);
@@ -59,7 +60,7 @@ vec3 blend(vec3 b, vec3 s) {
 }
 void main() {
   vec4 b = texture(u_backdrop, v_uv);
-  vec4 l = texture(u_layer, v_uv);
+  vec4 l = texture(u_layer, v_uv) * u_opacity;
   if (l.a <= 0.0) { o_color = b; return; }
   vec3 s = l.rgb / l.a;
   o_color = vec4(mix(b.rgb, blend(b.rgb, s), l.a), 1.0);
@@ -137,6 +138,7 @@ vec3 hsv2rgb(vec3 c) {
   vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
   return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
 }
+float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 `
 
 /** Fragment shaders per effect type. Uniform names equal the param keys in the registry. */
@@ -218,6 +220,97 @@ void main() {
   float nearKey = 1.0 - smoothstep(tolerance, tolerance + 0.35, dh);
   vec3 rgb = mix(c.rgb, vec3(dot(c.rgb, vec3(0.2126, 0.7152, 0.0722))), nearKey * spill * hsv.y);
   o_color = premultiply(vec4(rgb, c.a * (1.0 - match)));
+}`,
+  levels: `${EFFECT_HEADER}
+uniform float blacks, whites, gamma;
+void main() {
+  vec4 c = unpremultiply(texture(u_tex, v_uv));
+  vec3 rgb = clamp((c.rgb - blacks) / max(whites - blacks, 1e-3), 0.0, 1.0);
+  o_color = premultiply(vec4(pow(rgb, vec3(1.0 / max(gamma, 1e-3))), c.a));
+}`,
+  lumaKey: `${EFFECT_HEADER}
+uniform float threshold, softness, invert;
+void main() {
+  vec4 c = unpremultiply(texture(u_tex, v_uv));
+  float keep = smoothstep(threshold, threshold + softness + 1e-3, luma(c.rgb));
+  if (invert > 0.5) keep = 1.0 - keep;
+  o_color = premultiply(vec4(c.rgb, c.a * keep));
+}`,
+  // amount arrives in render pixels.
+  chromaticAberration: `${EFFECT_HEADER}
+uniform float amount;
+void main() {
+  vec2 dir = v_uv - 0.5;
+  vec2 shift = dir / max(length(dir), 1e-3) * length(dir) * 2.0 * amount * u_texel;
+  vec4 c = texture(u_tex, v_uv);
+  vec4 r = texture(u_tex, v_uv + shift);
+  vec4 b = texture(u_tex, v_uv - shift);
+  // Premultiplied: the fringes of a transparent layer take the alpha of the channel that lands there.
+  o_color = vec4(r.r, c.g, b.b, max(c.a, max(r.a, b.a)));
+}`,
+  // size arrives in render pixels; u_seed changes every frame so the grain moves.
+  grain: `${EFFECT_HEADER}
+uniform float amount, size, u_seed;
+float hash(vec2 p) { p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }
+void main() {
+  vec4 c = texture(u_tex, v_uv);
+  vec2 cell = floor(v_uv / (u_texel * max(size, 1.0)));
+  float n = hash(cell + fract(u_seed * 0.6180339) * 1000.0) - 0.5;
+  o_color = vec4(clamp(c.rgb + n * amount * 0.5 * c.a, 0.0, c.a), c.a);
+}`,
+  // x/y/width/height are percentages of the frame (y down, like the project); feather in render pixels.
+  mask: `${EFFECT_HEADER}
+uniform float shape, x, y, width, height, rotation, feather, invert;
+void main() {
+  vec4 c = texture(u_tex, v_uv);
+  vec2 size = 1.0 / u_texel;
+  vec2 p = (v_uv - vec2(0.5 + x / 100.0, 0.5 - y / 100.0)) * size;
+  p.y = -p.y;
+  float a = radians(rotation);
+  p = vec2(cos(a) * p.x + sin(a) * p.y, -sin(a) * p.x + cos(a) * p.y);
+  vec2 halfSize = max(vec2(width, height) / 200.0 * size, vec2(1.0));
+  float d;
+  if (shape < 0.5) {
+    vec2 q = abs(p) - halfSize;
+    d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+  } else {
+    // Distance to an ellipse, scaled so the feather is roughly in pixels along both axes.
+    d = (length(p / halfSize) - 1.0) * min(halfSize.x, halfSize.y);
+  }
+  float m = 1.0 - smoothstep(-feather * 0.5 - 0.5, feather * 0.5 + 0.5, d);
+  if (invert > 0.5) m = 1.0 - m;
+  o_color = c * m;
+}`,
+  glowExtract: `${EFFECT_HEADER}
+uniform float threshold;
+void main() {
+  vec4 c = texture(u_tex, v_uv);
+  vec3 rgb = c.a > 0.0 ? c.rgb / c.a : vec3(0.0);
+  float bright = smoothstep(threshold, threshold + 0.1, luma(rgb));
+  o_color = c * bright;
+}`,
+  glowCombine: `${EFFECT_HEADER}
+uniform sampler2D u_glow;
+uniform float intensity;
+void main() {
+  vec4 c = texture(u_tex, v_uv);
+  vec4 g = texture(u_glow, v_uv) * intensity;
+  // Screen the glow on, so it brightens without blowing out.
+  o_color = vec4(c.rgb + g.rgb * (1.0 - c.rgb), max(c.a, min(1.0, g.a)));
+}`,
+  // offset arrives in render pixels, y down.
+  shadowShape: `${EFFECT_HEADER}
+uniform vec2 u_offset;
+uniform float opacity;
+void main() {
+  float a = texture(u_tex, v_uv - vec2(u_offset.x, -u_offset.y) * u_texel).a;
+  o_color = vec4(0.0, 0.0, 0.0, a * opacity);
+}`,
+  shadowCombine: `${EFFECT_HEADER}
+uniform sampler2D u_shadow;
+void main() {
+  vec4 c = texture(u_tex, v_uv);
+  o_color = c + texture(u_shadow, v_uv) * (1.0 - c.a);
 }`
 }
 

@@ -27,6 +27,7 @@ export type ImageClip = z.infer<typeof s.imageClipSchema>
 export type TextClip = z.infer<typeof s.textClipSchema>
 export type ShapeClip = z.infer<typeof s.shapeClipSchema>
 export type CaptionClip = z.infer<typeof s.captionClipSchema>
+export type AdjustmentClip = z.infer<typeof s.adjustmentClipSchema>
 export type Clip = z.infer<typeof s.clipSchema>
 export type ClipType = Clip['type']
 export type VisualClip = VideoClip | ImageClip | TextClip | ShapeClip
@@ -42,6 +43,9 @@ export type Project = z.infer<typeof s.projectSchema>
 
 export const isVisualClip = (clip: Clip): clip is VisualClip =>
   clip.type === 'video' || clip.type === 'image' || clip.type === 'text' || clip.type === 'shape'
+/** Clips with an effect stack (layers and adjustment layers). */
+export const hasEffects = (clip: Clip): clip is VisualClip | AdjustmentClip =>
+  isVisualClip(clip) || clip.type === 'adjustment'
 export const isAudibleClip = (clip: Clip): clip is AudibleClip =>
   clip.type === 'video' || clip.type === 'audio'
 

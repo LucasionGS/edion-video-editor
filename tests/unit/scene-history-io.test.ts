@@ -12,7 +12,9 @@ import {
   serializeProject,
   setTransition,
   splitClip,
-  upsertKeyframe
+  upsertKeyframe,
+  createAdjustmentClip,
+  findClip
 } from '@core/index'
 import type { Layer, Project, TransitionNode } from '@core/index'
 import { projectWithClips } from './helpers'
@@ -132,5 +134,35 @@ describe('project io', () => {
     expect(() => parseProject('{"app":"other"}')).toThrow(/not an Edion project/)
     expect(() => parseProject(JSON.stringify({ ...createProject(), version: 999 }))).toThrow(/newer version/)
     expect(() => parseProject(JSON.stringify({ ...createProject(), tracks: 'x' }))).toThrow(/damaged/)
+  })
+})
+
+describe('adjustment layers', () => {
+  it('evaluate into adjustment nodes above the layers they cover', () => {
+    const { project } = projectWithClips([0, 60])
+    const adjustment = createAdjustmentClip(10, 30)
+    adjustment.duration = 20
+    adjustment.effects.push({ id: 'fx', type: 'color', enabled: true, params: { saturation: { value: -1 } } })
+    upsertKeyframe(adjustment.opacity, 0, 0)
+    upsertKeyframe(adjustment.opacity, 10, 1)
+    insertClipAuto(project, adjustment)
+    expect(project.tracks[0]!.clips[0]!.id).toBe(adjustment.id)
+    const scene = evaluateScene(project, 15)
+    expect(scene.nodes.map((n) => n.kind)).toEqual(['layer', 'adjustment'])
+    const node = scene.nodes[1]!
+    expect(node.kind === 'adjustment' && node.opacity).toBeCloseTo(0.5)
+    expect(node.kind === 'adjustment' && node.effects[0]!.params['saturation']).toBe(-1)
+    expect(evaluateScene(project, 40).nodes.map((n) => n.kind)).toEqual(['layer'])
+  })
+
+  it('goes on a new top track when the top track is busy, and splits like other clips', () => {
+    const { project } = projectWithClips([0, 60])
+    const adjustment = createAdjustmentClip(0, 30)
+    insertClipAuto(project, adjustment)
+    const again = createAdjustmentClip(10, 30)
+    insertClipAuto(project, again)
+    expect(project.tracks[0]!.clips[0]!.id).toBe(again.id)
+    const right = splitClip(project, adjustment.id, 50)!
+    expect(findClip(project, right)!.clip.type).toBe('adjustment')
   })
 })

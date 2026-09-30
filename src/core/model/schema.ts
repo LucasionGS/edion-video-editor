@@ -48,7 +48,9 @@ export const effectSchema = z.object({
   id,
   type: z.string(),
   enabled: z.boolean(),
-  params: z.record(z.string(), animNumberSchema)
+  params: z.record(z.string(), animNumberSchema),
+  /** Path of a file the effect reads (the .cube file of a LUT). */
+  resource: z.string().optional()
 })
 
 export const textStyleSchema = z.object({
@@ -143,6 +145,13 @@ export const shapeClipSchema = z.object({
   cornerRadius: z.number()
 })
 export const captionClipSchema = z.object({ ...clipBase, type: z.literal('caption'), text: z.string() })
+/** Applies its effects to everything below it on the timeline, faded in by its opacity. */
+export const adjustmentClipSchema = z.object({
+  ...clipBase,
+  type: z.literal('adjustment'),
+  opacity: animNumberSchema,
+  effects: z.array(effectSchema)
+})
 
 export const clipSchema = z.discriminatedUnion('type', [
   videoClipSchema,
@@ -150,7 +159,8 @@ export const clipSchema = z.discriminatedUnion('type', [
   imageClipSchema,
   textClipSchema,
   shapeClipSchema,
-  captionClipSchema
+  captionClipSchema,
+  adjustmentClipSchema
 ])
 
 export const transitionSchema = z.object({

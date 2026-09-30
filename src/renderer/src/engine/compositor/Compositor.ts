@@ -1,5 +1,5 @@
-import { TRANSITIONS } from '@core/index'
-import type { CaptionClip, Id, Layer, Scene, SceneNode } from '@core/index'
+import { effectSpec, TRANSITIONS } from '@core/index'
+import type { CaptionClip, Id, Layer, ResolvedEffect, Scene, SceneNode } from '@core/index'
 import { compileProgram, createTexture } from './gl'
 import { rasterizeShape, rasterizeText, type Raster } from './raster'
 import {
@@ -57,6 +57,8 @@ export class Compositor {
   /** Render pixels per project pixel (< 1 for a lighter preview). */
   private scale = 1
   private tick = 0
+  /** Timeline frame being rendered (seeds animated noise). */
+  private frame = 0
 
   private readonly programs = new Map<string, Program>()
   private targets: Target[] = []
@@ -145,13 +147,14 @@ export class Compositor {
       gl.deleteFramebuffer(t.framebuffer)
       gl.deleteTexture(t.texture)
     }
-    this.targets = Array.from({ length: 6 }, () => this.createTarget())
+    this.targets = Array.from({ length: 8 }, () => this.createTarget())
   }
 
   render(scene: Scene, source: FrameSource): void {
     const { gl } = this
     if (this.lost || gl.isContextLost()) return
     this.tick++
+    this.frame = scene.frame
     if (this.width === 0) this.setSize(scene.width, scene.height)
     let [accRead, accWrite, layerA, layerB, fromTarget, toTarget] = this.targets as [
       Target,
@@ -170,9 +173,20 @@ export class Compositor {
     const composite = (node: SceneNode): void => {
       let result: Target | null
       let blendMode: string
+      let opacity = 1
       if (node.kind === 'layer') {
         result = this.renderLayer(node, source, layerA, layerB)
         blendMode = node.blendMode
+      } else if (node.kind === 'adjustment') {
+        if (node.opacity <= 0 || node.effects.length === 0) return
+        // The effects run on a copy of everything below, which is then laid back on top.
+        this.bind(layerA)
+        const copy = this.use('copy', FULLSCREEN_VERTEX, COPY_FRAGMENT)
+        this.texture(copy, 'u_tex', 0, accRead.texture)
+        this.drawFullscreen(copy)
+        result = this.applyEffects(node.effects, layerA, layerB, source)
+        blendMode = 'normal'
+        opacity = node.opacity
       } else {
         const from = this.renderLayer(node.from, source, fromTarget, layerB) ?? this.cleared(fromTarget)
         // renderLayer may hand back its scratch target; keep the two results apart.
@@ -206,6 +220,7 @@ export class Compositor {
         p.uniforms.get('u_mode')!,
         Math.max(0, BLEND_MODES.indexOf(blendMode as (typeof BLEND_MODES)[number]))
       )
+      gl.uniform1f(p.uniforms.get('u_opacity')!, opacity)
       this.drawFullscreen(p)
       ;[accRead, accWrite] = [accWrite, accRead]
     }
@@ -320,32 +335,92 @@ export class Compositor {
     this.texture(p, 'u_tex', 0, content.texture)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 
-    let read = primary
-    let write = scratch
-    const pass = (type: string, params: Record<string, number>, setup?: (p: Program) => void): void => {
+    return this.applyEffects(layer.effects, primary, scratch, source)
+  }
+
+  /**
+   * Runs an effect stack. `read` holds the input and `write` is free; they swap after every pass, and
+   * the one holding the result is returned. Multi-pass effects (glow, shadow) also use the two
+   * effect scratch targets, which nothing else touches.
+   */
+  private applyEffects(effects: ResolvedEffect[], read: Target, write: Target, source: FrameSource): Target {
+    const { gl } = this
+    const [fxA, fxB] = [this.targets[6]!, this.targets[7]!]
+    const pixels = (value: number | undefined): number => (value ?? 0) * this.scale
+    /** One pass from `input` into `output`. */
+    const run = (
+      type: string,
+      params: Record<string, number>,
+      input: WebGLTexture,
+      output: Target,
+      setup?: (p: Program) => void
+    ): void => {
       const fragment = EFFECT_FRAGMENTS[type]
       if (!fragment) return
-      this.bind(write)
+      this.bind(output)
       const program = this.use(`effect:${type}`, FULLSCREEN_VERTEX, fragment)
-      this.texture(program, 'u_tex', 0, read.texture)
+      this.texture(program, 'u_tex', 0, input)
       gl.uniform2f(program.uniforms.get('u_texel')!, 1 / this.width, 1 / this.height)
+      const seed = program.uniforms.get('u_seed')
+      if (seed) gl.uniform1f(seed, this.frame)
       for (const [key, value] of Object.entries(params)) {
         const location = program.uniforms.get(key)
         if (location) gl.uniform1f(location, value)
       }
       setup?.(program)
       this.drawFullscreen(program)
+    }
+    /** A pass over the stack's current image. */
+    const pass = (type: string, params: Record<string, number>, setup?: (p: Program) => void): void => {
+      run(type, params, read.texture, write, setup)
       ;[read, write] = [write, read]
     }
-    for (const effect of layer.effects) {
-      if (effect.type === 'blur') {
-        const params = { radius: (effect.params['radius'] ?? 0) * this.scale }
-        pass('blur', params, (pr) => gl.uniform2f(pr.uniforms.get('u_direction')!, 1, 0))
-        pass('blur', params, (pr) => gl.uniform2f(pr.uniforms.get('u_direction')!, 0, 1))
-      } else if (effect.type === 'pixelate') {
-        pass('pixelate', { size: (effect.params['size'] ?? 1) * this.scale })
-      } else pass(effect.type, effect.params)
+    const direction = (x: number, y: number) => (p: Program) =>
+      gl.uniform2f(p.uniforms.get('u_direction')!, x, y)
+    /** Gaussian blur of fxA in place (through fxB). */
+    const blurScratch = (radius: number): void => {
+      run('blur', { radius }, fxA.texture, fxB, direction(1, 0))
+      run('blur', { radius }, fxB.texture, fxA, direction(0, 1))
     }
+
+    for (const effect of effects) {
+      const p = effect.params
+      switch (effect.type) {
+        case 'blur': {
+          const params = { radius: pixels(p['radius']) }
+          pass('blur', params, direction(1, 0))
+          pass('blur', params, direction(0, 1))
+          break
+        }
+        case 'glow':
+          run('glowExtract', { threshold: p['threshold'] ?? 0.7 }, read.texture, fxA)
+          blurScratch(pixels(p['radius']))
+          pass('glowCombine', { intensity: p['intensity'] ?? 1 }, (pr) =>
+            this.texture(pr, 'u_glow', 1, fxA.texture)
+          )
+          break
+        case 'dropShadow': {
+          const angle = ((p['angle'] ?? 45) * Math.PI) / 180
+          const distance = pixels(p['distance'])
+          run('shadowShape', { opacity: p['opacity'] ?? 0.6 }, read.texture, fxA, (pr) =>
+            gl.uniform2f(pr.uniforms.get('u_offset')!, Math.cos(angle) * distance, Math.sin(angle) * distance)
+          )
+          blurScratch(pixels(p['blur']))
+          pass('shadowCombine', {}, (pr) => this.texture(pr, 'u_shadow', 1, fxA.texture))
+          break
+        }
+        default: {
+          const spec = effectSpec(effect.type)
+          const params = { ...p }
+          // Pixel sizes are in project pixels; the preview may render smaller.
+          for (const [key, param] of Object.entries(spec?.params ?? {})) {
+            if (param.pixels) params[key] = pixels(p[key])
+          }
+          pass(effect.type, params)
+        }
+      }
+    }
+    void source
     return read
   }
 

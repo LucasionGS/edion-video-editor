@@ -1,7 +1,7 @@
 import { shiftKeyframes, splitAnimatable } from '../keyframes/animatable'
 import { createTrack, newId } from '../model/factory'
 import type { AudioClip, Clip, Id, MediaAsset, Project, Track, TrackKind } from '../model/types'
-import { isAudibleClip, isVisualClip, trackKindFor } from '../model/types'
+import { hasEffects, isAudibleClip, isVisualClip, trackKindFor } from '../model/types'
 import { linkedPartners, pruneLinks, relinkCopies } from './link'
 import { animatablesOf, clipEnd, findClip, findTrack, isFree, isHold, sourceHandles } from './query'
 
@@ -98,6 +98,14 @@ export function insertClip(project: Project, trackId: Id, clip: Clip): boolean {
 export function insertClipAuto(project: Project, clip: Clip, preferredTrackId?: Id): Id {
   const kind = trackKindFor(clip.type)
   const compatible = project.tracks.filter((t) => t.kind === kind && !t.locked)
+  // An adjustment layer only affects what is below it: the top track, or a new one above everything.
+  if (clip.type === 'adjustment') {
+    const top = project.tracks.find((t) => t.kind === 'video')
+    const target =
+      top && !top.locked && isFree(top, clip.start, clip.duration) ? top : addTrack(project, 'video')
+    insertClip(project, target.id, clip)
+    return target.id
+  }
   // Bottom-most video track first, so new layers stack upwards like in every other editor.
   if (kind === 'video') compatible.reverse()
   const preferred = compatible.find((t) => t.id === preferredTrackId)
@@ -284,7 +292,7 @@ function splitOne(project: Project, clipId: Id, frame: number): Id | null {
   // The part played first comes from later source when reversed.
   if ('reversed' in clip && clip.reversed) shiftSource(project, clip, right.duration)
   else shiftSource(project, right, local)
-  if (isVisualClip(right)) for (const effect of right.effects) effect.id = newId()
+  if (hasEffects(right)) for (const effect of right.effects) effect.id = newId()
 
   const leftAnims = animatablesOf(clip)
   const rightAnims = animatablesOf(right)
@@ -335,7 +343,7 @@ export function cloneClip(clip: Clip, start = clip.start): Clip {
   const copy = JSON.parse(JSON.stringify(clip)) as Clip
   copy.id = newId()
   copy.start = start
-  if (isVisualClip(copy)) for (const effect of copy.effects) effect.id = newId()
+  if (hasEffects(copy)) for (const effect of copy.effects) effect.id = newId()
   return copy
 }
 

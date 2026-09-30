@@ -1,5 +1,5 @@
-import { Circle, Square, Type } from 'lucide-react'
-import { createShapeClip, createTextClip } from '@core/index'
+import { Circle, SlidersHorizontal, Square, Type } from 'lucide-react'
+import { createAdjustmentClip, createShapeClip, createTextClip } from '@core/index'
 import type { TextClip } from '@core/index'
 import { addGeneratedClip } from '@/store/commands'
 
@@ -112,6 +112,18 @@ export function TitlesLibrary() {
         >
           <Circle size={16} />
           <span className="text-2xs">Ellipse</span>
+        </button>
+      </Group>
+      <Group title="Layers">
+        <button
+          className={card}
+          title="Applies its effects to everything below it"
+          onClick={() =>
+            addGeneratedClip('Add adjustment layer', (start, { fps }) => createAdjustmentClip(start, fps))
+          }
+        >
+          <SlidersHorizontal size={16} />
+          <span className="text-2xs">Adjustment layer</span>
         </button>
       </Group>
     </div>
