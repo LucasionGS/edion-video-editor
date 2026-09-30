@@ -69,7 +69,8 @@ const api: EdionApi = {
     saveRecording: (data, projectPath) => ipcRenderer.invoke(LIBRARY_IPC.saveRecording, data, projectPath),
     cacheSize: () => ipcRenderer.invoke(LIBRARY_IPC.cacheSize),
     clearCache: () => ipcRenderer.invoke(LIBRARY_IPC.clearCache),
-    loudness: (path, start, duration) => ipcRenderer.invoke(LIBRARY_IPC.loudness, path, start, duration)
+    loudness: (path, start, duration) => ipcRenderer.invoke(LIBRARY_IPC.loudness, path, start, duration),
+    collect: (paths, folder) => ipcRenderer.invoke(LIBRARY_IPC.collect, paths, folder)
   },
   settings: {
     get: () => ipcRenderer.invoke(SETTINGS_IPC.get),

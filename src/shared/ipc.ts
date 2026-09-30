@@ -287,6 +287,11 @@ export interface EdionMediaLibraryApi {
   saveRecording(data: Uint8Array, projectPath: string | null): Promise<string>
   cacheSize(): Promise<number>
   clearCache(): Promise<void>
+  /**
+   * Copies files into `folder` (keeping names, adding a suffix on clashes) and returns old path → new
+   * path for each file copied. Files already in the folder are left where they are.
+   */
+  collect(paths: string[], folder: string): Promise<Record<string, string>>
   /** EBU R128 loudness of `duration` seconds from `start`, or null when it cannot be measured. */
   loudness(
     path: string,
@@ -326,7 +331,8 @@ export const LIBRARY_IPC = {
   saveRecording: 'library:saveRecording',
   cacheSize: 'library:cacheSize',
   clearCache: 'library:clearCache',
-  loudness: 'library:loudness'
+  loudness: 'library:loudness',
+  collect: 'library:collect'
 } as const
 
 export const SETTINGS_IPC = { get: 'settings:get', update: 'settings:update' } as const

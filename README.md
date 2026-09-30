@@ -5,7 +5,7 @@ A sleek, cross-platform video editor built on Electron, WebGL and FFmpeg.
 ## Features
 
 - **Timeline** — multi-track video / audio / caption tracks; move, trim, split (razor), ripple / roll / slip / slide tools, ripple trim to playhead (Q / W), close gaps, ripple delete, snapping, multi-select, copy / paste / duplicate, linked clips (a video and its detached audio edit together; Alt-drag edits one side), markers, in/out range, full undo/redo.
-- **Media** — video, audio and images; filmstrip thumbnails and waveforms; missing-media relinking; automatic **proxies** for 4K / HEVC / AV1 / ProRes footage and for formats Chromium can't decode.
+- **Media** — video, audio and images; search and type filter, in-use badges, remove unused media, collect all files into one folder; filmstrip thumbnails and waveforms; missing-media relinking; automatic **proxies** for 4K / HEVC / AV1 / ProRes footage and for formats Chromium can't decode.
 - **Text, shapes, captions** — styled titles (fonts, outline, shadow, box), rectangles and ellipses, a caption track with SRT / VTT import and export (burned in on export).
 - **Animation** — keyframes on position, scale, rotation, opacity, volume and every effect parameter, with easing; entrance / exit presets; on-canvas move / scale / rotate gizmo.
 - **Effects and transitions** — colour adjust, levels, blur, sharpen, glow, drop shadow, vignette, sepia, invert, pixelate, chromatic aberration, film grain, chroma key, luma key, .cube LUTs, rectangle / ellipse masks (feathered, keyframeable); adjustment layers that apply effects to everything below them; blend modes; 13 transitions.

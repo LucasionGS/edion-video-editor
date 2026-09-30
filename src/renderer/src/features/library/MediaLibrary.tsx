@@ -1,24 +1,36 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  Check,
   Copy,
+  Ellipsis,
   FileAudio,
+  FolderInput,
   FolderSearch,
   Gauge,
   ImageIcon,
   Link2,
   MousePointerClick,
   Plus,
+  Search,
   Trash2,
   Upload
 } from 'lucide-react'
-import { formatClock, projectDuration, removeMedia } from '@core/index'
+import { formatClock, mediaUsage, projectDuration, removeMedia, removeUnusedMedia } from '@core/index'
 import type { MediaAsset } from '@core/index'
 import type { Filmstrip } from '@shared/ipc'
 import { edit, select, useEditor } from '@/store/editor'
 import { confirm, toast } from '@/store/feedback'
-import { addAssetToTimeline, importMedia, importMediaDialog, relinkMedia } from '@/store/projectActions'
+import {
+  addAssetToTimeline,
+  collectMedia,
+  importMedia,
+  importMediaDialog,
+  relinkMedia
+} from '@/store/projectActions'
 import { Button } from '@/ui/Button'
+import { Segmented } from '@/ui/Field'
+import { IconButton } from '@/ui/IconButton'
 import { EmptyState } from '@/ui/Panel'
 import { requestProxy, useProxies } from '@/engine/proxies'
 import { openContextMenu, type MenuItem } from '@/ui/ContextMenu'
@@ -26,10 +38,50 @@ import { VoiceoverButton } from './Voiceover'
 
 export const MEDIA_DRAG_TYPE = 'application/x-edion-media'
 
+type KindFilter = 'all' | MediaAsset['kind']
+const KIND_FILTERS: ReadonlyArray<{ value: KindFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'video', label: 'Video' },
+  { value: 'audio', label: 'Audio' },
+  { value: 'image', label: 'Images' }
+]
+
 export function MediaLibrary() {
   const media = useEditor((s) => s.project.media)
   const missing = useEditor((s) => s.missingMedia)
+  const tracks = useEditor((s) => s.project.tracks)
+  const usage = useMemo(() => mediaUsage({ tracks }), [tracks])
   const [dropping, setDropping] = useState(false)
+  const [query, setQuery] = useState('')
+  const [kind, setKind] = useState<KindFilter>('all')
+  const needle = query.trim().toLowerCase()
+  const shown = media.filter(
+    (m) => (kind === 'all' || m.kind === kind) && (!needle || m.name.toLowerCase().includes(needle))
+  )
+  const unused = media.filter((m) => !usage.has(m.id)).length
+
+  function openLibraryMenu(event: React.MouseEvent): void {
+    openContextMenu(event, [
+      { label: 'Import media…', icon: <Upload size={13} />, onSelect: () => void importMediaDialog() },
+      { type: 'separator' },
+      {
+        label: unused ? `Remove ${unused} unused item${unused > 1 ? 's' : ''}` : 'No unused media',
+        icon: <Trash2 size={13} />,
+        disabled: unused === 0,
+        onSelect: () => {
+          let count = 0
+          edit('Remove unused media', (draft) => void (count = removeUnusedMedia(draft)))
+          toast(`Removed ${count} unused item${count > 1 ? 's' : ''}.`)
+        }
+      },
+      {
+        label: 'Collect files into a folder…',
+        icon: <FolderInput size={13} />,
+        disabled: media.length === 0,
+        onSelect: () => void collectMedia()
+      }
+    ])
+  }
 
   return (
     <div
@@ -40,11 +92,7 @@ export function MediaLibrary() {
         setDropping(true)
       }}
       onDragLeave={() => setDropping(false)}
-      onContextMenu={(e) =>
-        openContextMenu(e, [
-          { label: 'Import media…', icon: <Upload size={13} />, onSelect: () => void importMediaDialog() }
-        ])
-      }
+      onContextMenu={openLibraryMenu}
       onDrop={(e) => {
         e.preventDefault()
         setDropping(false)
@@ -60,8 +108,30 @@ export function MediaLibrary() {
           <Button onClick={() => void importMediaDialog()}>
             <Upload size={13} /> Import
           </Button>
+          <IconButton label="More" onClick={openLibraryMenu}>
+            <Ellipsis size={15} />
+          </IconButton>
         </span>
       </div>
+      {media.length > 0 && (
+        <div className="flex shrink-0 flex-col gap-1.5 px-3 pb-2">
+          <label className="flex h-7 items-center gap-1.5 rounded-md border border-line bg-bg px-2 focus-within:border-accent">
+            <Search size={12} className="shrink-0 text-faint" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === 'Escape') setQuery('')
+              }}
+              placeholder="Search media"
+              aria-label="Search media"
+              className="min-w-0 flex-1 bg-transparent text-xs outline-none select-text placeholder:text-faint"
+            />
+          </label>
+          <Segmented value={kind} options={KIND_FILTERS} onChange={setKind} />
+        </div>
+      )}
       {media.length === 0 ? (
         <EmptyState
           icon={<Upload size={22} />}
@@ -70,16 +140,24 @@ export function MediaLibrary() {
         />
       ) : (
         <ul className="grid min-h-0 flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2 overflow-auto px-3 pb-3">
-          {media.map((asset) => (
-            <MediaCard key={asset.id} asset={asset} missing={missing.includes(asset.id)} />
+          {shown.map((asset) => (
+            <MediaCard
+              key={asset.id}
+              asset={asset}
+              missing={missing.includes(asset.id)}
+              uses={usage.get(asset.id) ?? 0}
+            />
           ))}
+          {shown.length === 0 && (
+            <li className="col-span-full py-6 text-center text-2xs text-faint">Nothing matches.</li>
+          )}
         </ul>
       )}
     </div>
   )
 }
 
-function MediaCard({ asset, missing }: { asset: MediaAsset; missing: boolean }) {
+function MediaCard({ asset, missing, uses }: { asset: MediaAsset; missing: boolean; uses: number }) {
   const thumbnail = useThumbnail(asset, missing)
   const proxy = useProxies((s) => s.byPath[asset.path])
 
@@ -213,6 +291,15 @@ function MediaCard({ asset, missing }: { asset: MediaAsset; missing: boolean }) 
             }
           >
             {proxy === 'pending' ? 'Proxy…' : proxy === 'failed' ? 'No proxy' : 'Proxy'}
+          </span>
+        )}
+        {uses > 0 && (
+          <span
+            className="absolute top-1 right-1 flex items-center gap-0.5 rounded bg-black/70 px-1 text-[9px] font-medium text-white"
+            title={`Used by ${uses} clip${uses > 1 ? 's' : ''} on the timeline`}
+          >
+            <Check size={9} />
+            {uses > 1 ? uses : ''}
           </span>
         )}
         {asset.duration > 0 && (

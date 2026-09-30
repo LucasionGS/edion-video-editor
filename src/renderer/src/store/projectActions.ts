@@ -7,7 +7,8 @@ import {
   parseProject,
   projectDuration,
   ProjectFormatError,
-  serializeProject
+  serializeProject,
+  relinkPaths
 } from '@core/index'
 import type { Id, MediaAsset, Project } from '@core/index'
 import type { ImportedMedia } from '@shared/ipc'
@@ -199,4 +200,30 @@ export async function prepareProxies(assets: readonly MediaAsset[]): Promise<voi
   const heavy = assets.filter(benefitsFromProxy)
   if (heavy.length === 0 || !(await window.edion.settings.get()).proxiesEnabled) return
   for (const asset of heavy) void requestProxy(asset.path)
+}
+
+/**
+ * Copies every media file into one folder (chosen by the user) and points the project at the copies,
+ * so the project and its media can be moved or archived together.
+ */
+export async function collectMedia(): Promise<void> {
+  const { project, missingMedia } = get()
+  const paths = project.media.filter((m) => !missingMedia.includes(m.id)).map((m) => m.path)
+  if (paths.length === 0) return toast('There is no media to collect.')
+  const folder = await window.edion.dialog.chooseFolder()
+  if (!folder) return
+  toast(`Copying ${paths.length} file${paths.length > 1 ? 's' : ''}…`)
+  try {
+    const moved = await window.edion.library.collect(paths, folder)
+    let count = 0
+    edit('Collect media', (draft) => void (count = relinkPaths(draft, moved)))
+    toast(
+      count > 0
+        ? `Copied ${count} file${count > 1 ? 's' : ''}. Save the project to keep the new locations.`
+        : 'Everything was already in that folder.',
+      'success'
+    )
+  } catch (error) {
+    toast(`Copying failed: ${error instanceof Error ? error.message : String(error)}`, 'error')
+  }
 }

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, dialog, ipcMain, net, protocol } from 'electron'
@@ -304,6 +304,7 @@ export function registerLibraryIpc(): void {
     for (const jobs of [filmstripJobs, peakJobs, proxyJobs]) jobs.clear()
   })
   ipcMain.handle(LIBRARY_IPC.peaks, (_e, path: string) => once(peakJobs, path, () => buildPeaks(path)))
+  ipcMain.handle(LIBRARY_IPC.collect, (_e, paths: string[], folder: string) => collectFiles(paths, folder))
   ipcMain.handle(LIBRARY_IPC.loudness, (_e, path: string, start: number, duration: number) =>
     backgroundJobs.run(() => measureLoudness(path, start, duration))
   )
@@ -341,4 +342,23 @@ async function measureLoudness(path: string, start: number, duration: number): P
     child.once('close', () => resolvePromise(output))
   })
   return parseEbur128(log)
+}
+
+async function collectFiles(paths: string[], folder: string): Promise<Record<string, string>> {
+  await mkdir(folder, { recursive: true })
+  const moved: Record<string, string> = {}
+  const taken = new Set((await readdir(folder)).map((name) => name.toLowerCase()))
+  for (const path of new Set(paths)) {
+    if (resolve(dirname(path)) === resolve(folder)) continue
+    const extension = extname(path)
+    const stem = basename(path, extension)
+    let name = basename(path)
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${stem} (${n})${extension}`
+    taken.add(name.toLowerCase())
+    const target = join(folder, name)
+    await copyFile(path, target)
+    allowedFiles.add(resolve(target))
+    moved[path] = target
+  }
+  return moved
 }
