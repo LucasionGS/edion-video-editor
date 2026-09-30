@@ -156,6 +156,21 @@ export const shapeClipSchema = z.object({
   cornerRadius: z.number()
 })
 export const captionClipSchema = z.object({ ...clipBase, type: z.literal('caption'), text: z.string() })
+/**
+ * A nested sequence used as one clip: it shows (and plays) its sequence from `offset` frames on, with its
+ * own transform and effects on top.
+ */
+export const compoundClipSchema = z.object({
+  ...clipBase,
+  ...visual,
+  type: z.literal('compound'),
+  sequenceId: id,
+  /** Frames into the sequence where the clip starts. */
+  offset: frames.min(0),
+  /** Linear gain on everything the sequence plays. */
+  volume: z.number().min(0)
+})
+
 /** Applies its effects to everything below it on the timeline, faded in by its opacity. */
 export const adjustmentClipSchema = z.object({
   ...clipBase,
@@ -171,7 +186,8 @@ export const clipSchema = z.discriminatedUnion('type', [
   textClipSchema,
   shapeClipSchema,
   captionClipSchema,
-  adjustmentClipSchema
+  adjustmentClipSchema,
+  compoundClipSchema
 ])
 
 export const transitionSchema = z.object({
@@ -226,6 +242,9 @@ export const projectSettingsSchema = z.object({
   background: z.string()
 })
 
+/** The contents of compound clips: tracks, like the main timeline's, timed from 0. */
+export const sequenceSchema = z.object({ id, name: z.string(), tracks: z.array(trackSchema) })
+
 export const markerSchema = z.object({ id, frame: frames, label: z.string(), color: z.string() })
 
 export const projectSchema = z.object({
@@ -240,5 +259,7 @@ export const projectSchema = z.object({
   markers: z.array(markerSchema),
   captionStyle: textStyleSchema,
   /** Export range in frames, if set. */
-  range: z.object({ in: frames, out: frames }).nullable()
+  range: z.object({ in: frames, out: frames }).nullable(),
+  /** Nested sequences behind compound clips. */
+  sequences: z.array(sequenceSchema).optional()
 })

@@ -63,7 +63,8 @@ export class Compositor {
   private frame = 0
 
   private readonly programs = new Map<string, Program>()
-  private targets: Target[] = []
+  /** Render targets per nesting depth (0 = the timeline, 1 = inside a compound clip, …), made on demand. */
+  private targetSets: Target[][] = []
   private readonly layerTextures = new Map<Id, CachedTexture>()
   private readonly imageTextures = new Map<Id, CachedTexture>()
   private readonly rasterTextures = new Map<string, CachedTexture>()
@@ -127,7 +128,7 @@ export class Compositor {
   /** Drops every handle without touching GL (they died with the context) so they are recreated lazily. */
   private forgetResources(): void {
     this.programs.clear()
-    this.targets = []
+    this.targetSets = []
     this.layerTextures.clear()
     this.imageTextures.clear()
     this.rasterTextures.clear()
@@ -146,12 +147,20 @@ export class Compositor {
     this.scale = scale
     this.canvas.width = w
     this.canvas.height = h
-    const { gl } = this
-    for (const t of this.targets) {
-      gl.deleteFramebuffer(t.framebuffer)
-      gl.deleteTexture(t.texture)
+    this.deleteTargets()
+  }
+
+  /** The eight targets a scene at `depth` renders with: accumulators, layers, transition inputs, effects. */
+  private targetsAt(depth: number): Target[] {
+    return (this.targetSets[depth] ??= Array.from({ length: 8 }, () => this.createTarget()))
+  }
+
+  private deleteTargets(): void {
+    for (const target of this.targetSets.flat()) {
+      this.gl.deleteFramebuffer(target.framebuffer)
+      this.gl.deleteTexture(target.texture)
     }
-    this.targets = Array.from({ length: 8 }, () => this.createTarget())
+    this.targetSets = []
   }
 
   render(scene: Scene, source: FrameSource): void {
@@ -160,7 +169,24 @@ export class Compositor {
     this.tick++
     this.frame = scene.frame
     if (this.width === 0) this.setSize(scene.width, scene.height)
-    let [accRead, accWrite, layerA, layerB, fromTarget, toTarget] = this.targets as [
+    const result = this.renderScene(scene, source, 0)
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.viewport(0, 0, this.width, this.height)
+    const copy = this.use('copy', FULLSCREEN_VERTEX, COPY_FRAGMENT)
+    this.texture(copy, 'u_tex', 0, result.texture)
+    this.drawFullscreen(copy, this.flipOutput ? -1 : 1)
+    this.evictRasters()
+  }
+
+  /**
+   * Composites a scene with the targets of its nesting depth and returns the target holding the result
+   * (framebuffer orientation). Compound clips render their nested scene one depth further down.
+   */
+  private renderScene(scene: Scene, source: FrameSource, depth: number): Target {
+    const { gl } = this
+    const targets = this.targetsAt(depth)
+    let [accRead, accWrite, layerA, layerB, fromTarget, toTarget] = targets as [
       Target,
       Target,
       Target,
@@ -170,8 +196,11 @@ export class Compositor {
     ]
 
     this.bind(accRead)
-    const [r, g, b] = parseColor(scene.background)
-    gl.clearColor(r, g, b, 1)
+    if (scene.background === 'transparent') gl.clearColor(0, 0, 0, 0)
+    else {
+      const [r, g, b] = parseColor(scene.background)
+      gl.clearColor(r, g, b, 1)
+    }
     gl.clear(gl.COLOR_BUFFER_BIT)
 
     const composite = (node: SceneNode): void => {
@@ -179,7 +208,7 @@ export class Compositor {
       let blendMode: string
       let opacity = 1
       if (node.kind === 'layer') {
-        result = this.renderLayer(node, source, layerA, layerB)
+        result = this.renderLayer(node, source, layerA, layerB, depth)
         blendMode = node.blendMode
       } else if (node.kind === 'adjustment') {
         if (node.opacity <= 0 || node.effects.length === 0) return
@@ -188,14 +217,15 @@ export class Compositor {
         const copy = this.use('copy', FULLSCREEN_VERTEX, COPY_FRAGMENT)
         this.texture(copy, 'u_tex', 0, accRead.texture)
         this.drawFullscreen(copy)
-        result = this.applyEffects(node.effects, layerA, layerB, source)
+        result = this.applyEffects(node.effects, layerA, layerB, source, targets)
         blendMode = 'normal'
         opacity = node.opacity
       } else {
-        const from = this.renderLayer(node.from, source, fromTarget, layerB) ?? this.cleared(fromTarget)
+        const from =
+          this.renderLayer(node.from, source, fromTarget, layerB, depth) ?? this.cleared(fromTarget)
         // renderLayer may hand back its scratch target; keep the two results apart.
         const scratch = from === layerB ? fromTarget : layerB
-        const to = this.renderLayer(node.to, source, toTarget, scratch) ?? this.cleared(toTarget)
+        const to = this.renderLayer(node.to, source, toTarget, scratch, depth) ?? this.cleared(toTarget)
         // layerA is never handed to renderLayer above, so it is free to receive the mix.
         const out = layerA
         this.bind(out)
@@ -233,13 +263,7 @@ export class Compositor {
     for (const caption of scene.captions) {
       composite(this.captionLayer(scene, caption))
     }
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-    gl.viewport(0, 0, this.width, this.height)
-    const copy = this.use('copy', FULLSCREEN_VERTEX, COPY_FRAGMENT)
-    this.texture(copy, 'u_tex', 0, accRead.texture)
-    this.drawFullscreen(copy, this.flipOutput ? -1 : 1)
-    this.evictRasters()
+    return accRead
   }
 
   /** Reads the last rendered frame as top-down RGBA rows (requires `flipOutput`). */
@@ -270,6 +294,7 @@ export class Compositor {
       const raster = rasterizeText(clip.text, clip.style, clip.boxWidth, 0.05)
       return [raster.width, raster.height]
     }
+    if (clip.type === 'compound') return [scene.width, scene.height]
     return [clip.size[0] + clip.strokeWidth, clip.size[1] + clip.strokeWidth]
   }
 
@@ -296,10 +321,7 @@ export class Compositor {
       this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
     }
     for (const { program } of this.programs.values()) gl.deleteProgram(program)
-    for (const target of this.targets) {
-      gl.deleteFramebuffer(target.framebuffer)
-      gl.deleteTexture(target.texture)
-    }
+    this.deleteTargets()
     for (const cache of [this.layerTextures, this.imageTextures, this.rasterTextures, this.lutTextures]) {
       for (const cached of cache.values()) gl.deleteTexture(cached.texture)
     }
@@ -309,10 +331,17 @@ export class Compositor {
   // ── Layers ──────────────────────────────────────────────────────────────────────────────────────
 
   /** Draws a layer plus its effects. Returns the target holding the result (`primary` or `scratch`). */
-  private renderLayer(layer: Layer, source: FrameSource, primary: Target, scratch: Target): Target | null {
+  private renderLayer(
+    layer: Layer,
+    source: FrameSource,
+    primary: Target,
+    scratch: Target,
+    depth: number
+  ): Target | null {
+    const targets = this.targetsAt(depth)
     let content: CachedTexture | null = null
     try {
-      content = this.layerContent(layer, source)
+      content = this.layerContent(layer, source, depth)
     } catch (error) {
       // One layer that cannot be uploaded must not take the whole frame down with it.
       if (!this.failedClips.has(layer.clip.id))
@@ -342,7 +371,7 @@ export class Compositor {
     // "Blurred background": a blurred copy of the picture, zoomed to cover the frame, behind the layer.
     const fill = layer.effects.find((e) => e.type === 'blurFill')
     if (fill) {
-      const [fxA, fxB] = [this.targets[6]!, this.targets[7]!]
+      const [fxA, fxB] = [targets[6]!, targets[7]!]
       const W = this.width / this.scale
       const H = this.height / this.scale
       const w = content.width * (uvRect[2] - uvRect[0])
@@ -384,7 +413,7 @@ export class Compositor {
       draw(this.layerMatrix(transform, content.width, content.height), uvRect)
     }
 
-    return this.applyEffects(layer.effects, primary, scratch, source)
+    return this.applyEffects(layer.effects, primary, scratch, source, targets)
   }
 
   /**
@@ -392,9 +421,15 @@ export class Compositor {
    * the one holding the result is returned. Multi-pass effects (glow, shadow) also use the two
    * effect scratch targets, which nothing else touches.
    */
-  private applyEffects(effects: ResolvedEffect[], read: Target, write: Target, source: FrameSource): Target {
+  private applyEffects(
+    effects: ResolvedEffect[],
+    read: Target,
+    write: Target,
+    source: FrameSource,
+    targets: Target[]
+  ): Target {
     const { gl } = this
-    const [fxA, fxB] = [this.targets[6]!, this.targets[7]!]
+    const [fxA, fxB] = [targets[6]!, targets[7]!]
     const pixels = (value: number | undefined): number => (value ?? 0) * this.scale
     /** One pass from `input` into `output`. */
     const run = (
@@ -541,9 +576,26 @@ export class Compositor {
     return new Float32Array([a * sx, b * sy, 0, c * sx, d * sy, 0, tx * sx - 1, ty * sy + 1, 1])
   }
 
-  private layerContent(layer: Layer, source: FrameSource): CachedTexture | null {
+  private layerContent(layer: Layer, source: FrameSource, depth: number): CachedTexture | null {
     const { clip } = layer
     const { gl } = this
+    if (clip.type === 'compound') {
+      if (!layer.nested) return null
+      const nested = this.renderScene(layer.nested, source, depth + 1)
+      // Turn it the way uploaded pictures are (first row on top), into a free effect target of that depth.
+      const upright = this.targetsAt(depth + 1)[6]!
+      this.bind(upright)
+      const copy = this.use('copy', FULLSCREEN_VERTEX, COPY_FRAGMENT)
+      this.texture(copy, 'u_tex', 0, nested.texture)
+      this.drawFullscreen(copy, -1)
+      return {
+        texture: upright.texture,
+        width: this.width / this.scale,
+        height: this.height / this.scale,
+        lastUsed: this.tick,
+        stamp: null
+      }
+    }
     if (clip.type === 'video') {
       const frame = source.videoFrame(layer)
       if (!frame) return null

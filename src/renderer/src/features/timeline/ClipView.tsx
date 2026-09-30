@@ -4,6 +4,7 @@ import {
   Captions,
   Film,
   ImageIcon,
+  Layers,
   Link2,
   Pause,
   Rewind,
@@ -25,7 +26,8 @@ const look: Record<Clip['type'], { color: string; Icon: typeof Film }> = {
   text: { color: 'var(--color-clip-text)', Icon: Type },
   shape: { color: 'var(--color-clip-text)', Icon: Shapes },
   caption: { color: '#2b8a9e', Icon: Captions },
-  adjustment: { color: '#8a6d3b', Icon: SlidersHorizontal }
+  adjustment: { color: '#8a6d3b', Icon: SlidersHorizontal },
+  compound: { color: '#5d6b8a', Icon: Layers }
 }
 
 interface Props {

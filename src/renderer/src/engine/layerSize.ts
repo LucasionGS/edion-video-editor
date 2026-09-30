@@ -8,6 +8,8 @@ const textSizes = new Map<string, [number, number]>()
 export function naturalSize(project: Project, clip: VisualClip): [number, number] {
   const { width, height } = project.settings
   if (clip.type === 'shape') return [clip.size[0] + clip.strokeWidth, clip.size[1] + clip.strokeWidth]
+  // A compound clip draws its sequence at the project's size.
+  if (clip.type === 'compound') return [width, height]
   if (clip.type === 'text') {
     const key = `${clip.boxWidth}:${clip.text}:${JSON.stringify(clip.style)}`
     let size = textSizes.get(key)

@@ -15,6 +15,7 @@ import {
   FlipHorizontal2,
   FlipVertical2,
   Gauge,
+  Layers,
   LayoutGrid,
   Link2,
   Maximize,
@@ -27,6 +28,7 @@ import {
   Scissors,
   SquareSplitHorizontal,
   Trash2,
+  Ungroup,
   Unlink,
   Vibrate,
   Wind
@@ -62,9 +64,11 @@ import {
   copySelection,
   FRAME_HOLD_SECONDS,
   insertHoldAtPlayhead,
+  makeCompound,
   normalizeLoudness,
   cutSelection,
   deleteSelection,
+  breakApartSelection,
   duckUnderSpeech,
   duplicateSelection,
   paste,
@@ -406,6 +410,18 @@ export function clipMenuItems(): MenuItem[] {
       label: `Insert frame hold (${FRAME_HOLD_SECONDS} s)`,
       icon: <Pause size={13} />,
       onSelect: () => insertHoldAtPlayhead(clips[0]!.id)
+    })
+  }
+  items.push({ type: 'separator' })
+  if (clips.some((c) => c.type === 'compound')) {
+    items.push({ label: 'Break apart', icon: <Ungroup size={13} />, onSelect: breakApartSelection })
+  }
+  if (clips.some((c) => c.type !== 'caption')) {
+    items.push({
+      label: 'Create compound clip',
+      icon: <Layers size={13} />,
+      shortcut: shortcut('compound'),
+      onSelect: makeCompound
     })
   }
   const layable = clips.filter((c) => c.type === 'video' || c.type === 'image').length

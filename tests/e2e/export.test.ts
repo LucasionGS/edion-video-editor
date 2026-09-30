@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   addMedia,
+  createCompound,
   applySpeedRamp,
   sourceTimeAt,
   createAdjustmentClip,
@@ -169,7 +170,9 @@ function psnr(a: string, b: string): number {
     ],
     { encoding: 'utf8' }
   )
-  return Number(stderr.match(/average:([\d.]+)/)?.[1] ?? 0)
+  const value = stderr.match(/average:([\d.]+|inf)/)?.[1]
+  // Identical pictures have infinite PSNR.
+  return value === 'inf' ? Infinity : Number(value ?? 0)
 }
 
 /** PSNR between frame `frameA` of `a` and frame `frameB` of `b`. */
@@ -466,6 +469,28 @@ describe('compositing', () => {
     expect(g).toBeLessThan(160)
     expect(Math.max(r, b)).toBeLessThan(40)
     expect(pixel(output, 2, 640, 360)[1]).toBeGreaterThan(230)
+  })
+
+  it('renders compound clips like the clips inside them, transparent where empty', () => {
+    const build = (): { project: Project; square: ReturnType<typeof createShapeClip> } => {
+      const { project, clip } = baseProject()
+      clip.duration = 30
+      const square = createShapeClip(0, FPS, 'rect')
+      square.duration = 30
+      square.size = [300, 300]
+      square.fill = '#ff0000'
+      square.effects.push(effect('dropShadow', { distance: 20, angle: 45, blur: 8, opacity: 0.8 }))
+      insertClipAuto(project, square)
+      return { project, square }
+    }
+    const flat = exportProject(build().project, 'compound-flat')
+    // Only the square goes into the compound: the video below must show through around it.
+    const { project, square } = build()
+    expect(createCompound(project, [square.id])).not.toBeNull()
+    const nested = exportProject(project, 'compound-nested')
+    expect(psnr(nested, flat)).toBeGreaterThan(40)
+    const { audio } = probe(nested)
+    expect(audio?.['codec_name']).toBe('aac')
   })
 
   it('renders every effect without shader errors', () => {

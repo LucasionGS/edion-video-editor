@@ -4,11 +4,13 @@ import { nextEditPoint, nextMarker } from '@core/index'
 import { jumpSeconds, seek, seekToEnd, stepFrames, togglePlayback } from '@/engine/playback/session'
 import {
   addMarker,
+  breakApartSelection,
   clearRange,
   copySelection,
   cutSelection,
   deleteSelection,
   duplicateSelection,
+  makeCompound,
   paste,
   pasteInsert,
   rippleTrimToPlayhead,
@@ -184,6 +186,14 @@ export const COMMANDS: Command[] = [
     run: () => nudgeSelection(10)
   },
   { id: 'link', label: 'Link / unlink clips', group: 'Editing', keys: ['ctrl+l'], run: toggleLink },
+  { id: 'compound', label: 'Create compound clip', group: 'Editing', keys: ['ctrl+g'], run: makeCompound },
+  {
+    id: 'breakApart',
+    label: 'Break apart compound clip',
+    group: 'Editing',
+    keys: ['ctrl+shift+g'],
+    run: breakApartSelection
+  },
   {
     id: 'deselect',
     label: 'Deselect / select tool',

@@ -58,12 +58,16 @@ vec3 blend(vec3 b, vec3 s) {
   if (u_mode == 6) return max(b, s);
   return s;
 }
+// Premultiplied "source over" with a blend mode (W3C compositing). The backdrop is opaque on the
+// timeline, and may be transparent inside a compound clip.
 void main() {
   vec4 b = texture(u_backdrop, v_uv);
   vec4 l = texture(u_layer, v_uv) * u_opacity;
   if (l.a <= 0.0) { o_color = b; return; }
   vec3 s = l.rgb / l.a;
-  o_color = vec4(mix(b.rgb, blend(b.rgb, s), l.a), 1.0);
+  vec3 cb = b.a > 0.0 ? b.rgb / b.a : vec3(0.0);
+  vec3 rgb = (1.0 - b.a) * l.rgb + (1.0 - l.a) * b.rgb + l.a * b.a * blend(cb, s);
+  o_color = vec4(rgb, l.a + b.a * (1.0 - l.a));
 }`
 
 /** u_type indexes TRANSITIONS in core/effects/registry. Inputs are premultiplied. */

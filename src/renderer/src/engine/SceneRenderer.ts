@@ -1,4 +1,4 @@
-import { evaluateScene, findMedia, layersOf } from '@core/index'
+import { allLayers, evaluateScene, findMedia } from '@core/index'
 import type { Id, Layer, Lut3D, Project, Scene } from '@core/index'
 import type { EdionApi } from '@shared/ipc'
 import { Compositor, type FrameSource } from './compositor/Compositor'
@@ -60,7 +60,7 @@ export class SceneRenderer implements FrameSource {
   /** Preview: request frames, draw what is available now. Missing frames trigger `onContentReady` later. */
   draw(project: Project, frame: number): Scene {
     const scene = this.prepare(project, frame)
-    for (const layer of scene.nodes.flatMap(layersOf)) {
+    for (const layer of allLayers(scene)) {
       if (layer.clip.type === 'video') this.slot(layer)?.ready?.request(layer.sourceTime ?? 0)
     }
     this.compositor.render(scene, this)
@@ -71,17 +71,9 @@ export class SceneRenderer implements FrameSource {
   /** Export: waits until every layer has exactly the right frame. */
   async drawExact(project: Project, frame: number): Promise<Scene> {
     const scene = this.prepare(project, frame)
-    const resources = scene.nodes.flatMap((node) =>
-      node.kind === 'transition' ? [] : node.effects.flatMap((e) => e.resource ?? [])
-    )
-    const transitionResources = scene.nodes.flatMap((node) =>
-      node.kind === 'transition'
-        ? [node.from, node.to].flatMap((l) => l.effects.flatMap((e) => e.resource ?? []))
-        : []
-    )
-    await Promise.all([...resources, ...transitionResources].map((path) => this.luts.load(path)))
+    await Promise.all(effectResources(scene).map((path) => this.luts.load(path)))
     await Promise.all(
-      scene.nodes.flatMap(layersOf).map(async (layer) => {
+      allLayers(scene).map(async (layer) => {
         if (layer.clip.type === 'video')
           await (await this.slot(layer)?.decoder)?.frameAt(layer.sourceTime ?? 0)
         if (layer.clip.type === 'image') {
@@ -99,7 +91,7 @@ export class SceneRenderer implements FrameSource {
   preroll(project: Project, frame: number): void {
     const scene = evaluateScene(project, frame)
     this.project = project
-    for (const layer of scene.nodes.flatMap(layersOf)) {
+    for (const layer of allLayers(scene)) {
       if (layer.clip.type !== 'video') continue
       const slot = this.slot(layer)
       if (slot && !slot.ready?.current)
@@ -170,4 +162,17 @@ export class SceneRenderer implements FrameSource {
     this.pool.dispose()
     this.compositor.dispose()
   }
+}
+
+/** Files (LUTs) the effects in a scene need, including inside compound clips. */
+function effectResources(scene: Scene): string[] {
+  return scene.nodes.flatMap((node) => {
+    const layers =
+      node.kind === 'adjustment' ? [] : node.kind === 'transition' ? [node.from, node.to] : [node]
+    const own = node.kind === 'adjustment' ? node.effects : layers.flatMap((l) => l.effects)
+    return [
+      ...own.flatMap((e) => e.resource ?? []),
+      ...layers.flatMap((l) => (l.nested ? effectResources(l.nested) : []))
+    ]
+  })
 }

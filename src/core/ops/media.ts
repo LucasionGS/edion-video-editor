@@ -1,11 +1,12 @@
 import type { Id, Project } from '../model/types'
+import { allTracks } from './query'
 
 /** Media bookkeeping: what is used where, and moving files. */
 
 /** How many clips use each media asset (assets that are not used are absent). */
-export function mediaUsage(project: Pick<Project, 'tracks'>): Map<Id, number> {
+export function mediaUsage(project: Pick<Project, 'tracks' | 'sequences'>): Map<Id, number> {
   const usage = new Map<Id, number>()
-  for (const track of project.tracks)
+  for (const track of allTracks(project))
     for (const clip of track.clips)
       if ('mediaId' in clip) usage.set(clip.mediaId, (usage.get(clip.mediaId) ?? 0) + 1)
   return usage

@@ -12,6 +12,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Trash2,
+  Ungroup,
   Unlink
 } from 'lucide-react'
 import {
@@ -45,7 +46,7 @@ import type {
 } from '@core/index'
 import { edit, select, useEditor } from '@/store/editor'
 import { editClips } from '@/store/clipEdits'
-import { insertHoldAtPlayhead, normalizeLoudness } from '@/store/commands'
+import { breakApartSelection, insertHoldAtPlayhead, normalizeLoudness } from '@/store/commands'
 import { toast } from '@/store/feedback'
 import { deleteEffectPreset, presetEffects, usePresets } from '@/store/presets'
 import { openContextMenu } from '@/ui/ContextMenu'
@@ -105,6 +106,35 @@ export function Inspector() {
         </>
       )}
       {isVisualClip(clip) && <AnimateSection clip={clip} />}
+      {clip.type === 'compound' && (
+        <Section title="Compound clip">
+          <Row label="Volume">
+            <NumberInput
+              label="Compound volume"
+              value={clip.volume * 100}
+              min={0}
+              max={400}
+              step={1}
+              precision={0}
+              suffix="%"
+              {...scrub}
+              onChange={(v) =>
+                editClips(
+                  [clip.id],
+                  'Change volume',
+                  (c) => c.type === 'compound' && void (c.volume = Math.max(0, v / 100))
+                )
+              }
+            />
+          </Row>
+          <Button className="mt-1 self-start" onClick={breakApartSelection}>
+            <Ungroup size={13} /> Break apart
+          </Button>
+          <p className="text-2xs text-faint">
+            Break it apart to edit the clips inside, then group them again.
+          </p>
+        </Section>
+      )}
       {clip.type === 'adjustment' && (
         <Section title="Adjustment layer">
           <AnimNumberRow

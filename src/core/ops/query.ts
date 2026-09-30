@@ -24,8 +24,19 @@ export const findMedia = (project: Project, mediaId: Id): MediaAsset | undefined
 
 export const clipEnd = (clip: Clip): number => clip.start + clip.duration
 
+/** The timeline's tracks plus those of every nested sequence (for bookkeeping over all clips). */
+export const allTracks = (project: Pick<Project, 'tracks' | 'sequences'>): Track[] => [
+  ...project.tracks,
+  ...(project.sequences ?? []).flatMap((s) => s.tracks)
+]
+
+/** Length of a nested sequence in frames (end of its last clip). */
+export function sequenceDuration(sequence: Pick<Project, 'tracks'>): number {
+  return projectDuration(sequence)
+}
+
 /** Length of the timeline in frames (end of the last clip). */
-export function projectDuration(project: Project): number {
+export function projectDuration(project: Pick<Project, 'tracks'>): number {
   let end = 0
   for (const track of project.tracks) {
     const last = track.clips[track.clips.length - 1]
@@ -176,6 +187,11 @@ export function sourceHandles(project: Project, clip: Clip): { head: number; tai
  * beyond an edge plays at the speed the clip has at that edge.
  */
 export function handleFrames(project: Project, clip: Clip): { head: number; tail: number } {
+  if (clip.type === 'compound') {
+    const sequence = project.sequences?.find((s) => s.id === clip.sequenceId)
+    const length = sequence ? sequenceDuration(sequence) : clip.offset + clip.duration
+    return { head: clip.offset, tail: Math.max(0, length - clip.offset - clip.duration) }
+  }
   const { head, tail } = sourceHandles(project, clip)
   const edge = (frame: number): number => ('sourceIn' in clip ? speedAt(clip, frame) : 1)
   const frames = (seconds: number, speed: number): number =>

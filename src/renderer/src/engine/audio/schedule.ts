@@ -16,8 +16,11 @@ const GAIN_STEP_SECONDS = 0.02
 
 /** Timeline seconds during which a source sounds: the clip plus any crossfade overhang. */
 export function sourceWindow(source: AudioSource, fps: number): [number, number] {
-  const { clip, crossIn, crossOut } = source
-  return [(clip.start - crossIn) / fps, (clip.start + clip.duration + crossOut) / fps]
+  const { clip, crossIn, crossOut, bounds } = source
+  const from = clip.start - crossIn
+  const to = clip.start + clip.duration + crossOut
+  // Inside a compound clip, only the part the compound shows is heard.
+  return bounds ? [Math.max(from, bounds[0]) / fps, Math.min(to, bounds[1]) / fps] : [from / fps, to / fps]
 }
 
 /**

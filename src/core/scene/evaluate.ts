@@ -46,6 +46,8 @@ export interface Layer {
   clip: VisualClip
   /** Text being typed on: how many of its letters (not counting spaces) show. Absent = all. */
   reveal?: number
+  /** For a compound clip: its sequence at this frame, drawn as the layer's picture. */
+  nested?: Scene
   /** Frame relative to the clip start. Can fall outside [0, duration) inside a transition. */
   localFrame: number
   /** Position in the source media in seconds (video only). */
@@ -163,7 +165,20 @@ function transitionAt(track: Track, frame: number): { transition: Transition; fr
 }
 
 export function evaluateScene(project: Project, frame: number): Scene {
-  const { width, height, background } = project.settings
+  return evaluateTracks(project, project.tracks, frame, project.settings.background, 0)
+}
+
+/** Nested sequences deeper than this are not drawn (they cannot be built by the app anyway). */
+const MAX_NESTING = 8
+
+function evaluateTracks(
+  project: Project,
+  tracks: readonly Track[],
+  frame: number,
+  background: string,
+  depth: number
+): Scene {
+  const { width, height } = project.settings
   const scene: Scene = {
     frame,
     width,
@@ -173,10 +188,26 @@ export function evaluateScene(project: Project, frame: number): Scene {
     captions: [],
     captionStyle: project.captionStyle
   }
+  const resolve = (clip: VisualClip, at: number): Layer => {
+    const layer = resolveLayer(project, clip, at)
+    if (clip.type === 'compound' && depth < MAX_NESTING) {
+      const sequence = project.sequences?.find((s) => s.id === clip.sequenceId)
+      // Transparent, so what lies below the compound clip shows through its empty parts.
+      if (sequence)
+        layer.nested = evaluateTracks(
+          project,
+          sequence.tracks,
+          layer.localFrame + clip.offset,
+          'transparent',
+          depth + 1
+        )
+    }
+    return layer
+  }
 
   // tracks[0] is the top of the timeline, so walk backwards to paint back to front.
-  for (let i = project.tracks.length - 1; i >= 0; i--) {
-    const track = project.tracks[i]!
+  for (let i = tracks.length - 1; i >= 0; i--) {
+    const track = tracks[i]!
     if (track.hidden) continue
     if (track.kind === 'caption') {
       const caption = track.clips.find((c) => frame >= c.start && frame < clipEnd(c) && !c.disabled)
@@ -199,13 +230,13 @@ export function evaluateScene(project: Project, frame: number): Scene {
         kind: 'transition',
         type: transition.type,
         progress: (frame - begin + 0.5) / transition.duration,
-        from: resolveLayer(project, from, frame),
-        to: resolveLayer(project, to, frame)
+        from: resolve(from, frame),
+        to: resolve(to, frame)
       })
       continue
     }
     const clip = track.clips.find((c) => frame >= c.start && frame < clipEnd(c) && !c.disabled)
-    if (clip && isVisualClip(clip)) scene.nodes.push(resolveLayer(project, clip, frame))
+    if (clip && isVisualClip(clip)) scene.nodes.push(resolve(clip, frame))
     else if (clip?.type === 'adjustment') {
       const localFrame = frame - clip.start
       scene.nodes.push({
@@ -220,6 +251,13 @@ export function evaluateScene(project: Project, frame: number): Scene {
   return scene
 }
 
+/** Every clip layer drawn in a scene, including the ones inside compound clips (for decoding). */
+export function allLayers(scene: Scene): Layer[] {
+  return scene.nodes
+    .flatMap(layersOf)
+    .flatMap((layer) => [layer, ...(layer.nested ? allLayers(layer.nested) : [])])
+}
+
 // ── Audio ─────────────────────────────────────────────────────────────────────────────────────────
 
 export interface AudioSource {
@@ -232,27 +270,78 @@ export interface AudioSource {
    */
   crossIn: number
   crossOut: number
+  /** For clips inside compound clips: the timeline frames it may sound in, and the compound's gain. */
+  bounds?: [number, number]
+  gain?: number
 }
 
-/** Every clip that produces sound, honouring mute/solo. */
+/** Every clip that produces sound, honouring mute/solo; clips inside compound clips are placed on the timeline. */
 export function collectAudioSources(project: Project): AudioSource[] {
-  const anySolo = project.tracks.some((t) => t.solo)
+  return collectFrom(project, project.tracks, { shift: 0, bounds: null, gain: 1, trackId: null }, 0)
+}
+
+interface Placement {
+  /** Timeline frame of the sequence's frame 0. */
+  shift: number
+  bounds: [number, number] | null
+  gain: number
+  /** The top-level track, whose volume and pan apply. */
+  trackId: Id | null
+}
+
+function collectFrom(
+  project: Project,
+  tracks: readonly Track[],
+  place: Placement,
+  depth: number
+): AudioSource[] {
+  const anySolo = tracks.some((t) => t.solo)
   const sources: AudioSource[] = []
-  for (const track of project.tracks) {
+  for (const track of tracks) {
     if (track.muted || (anySolo && !track.solo)) continue
     for (const clip of track.clips) {
-      if (!isAudibleClip(clip) || clip.disabled) continue
+      if (clip.disabled) continue
+      if (clip.type === 'compound' && depth < MAX_NESTING) {
+        const sequence = project.sequences?.find((s) => s.id === clip.sequenceId)
+        if (!sequence || clip.volume <= 0) continue
+        const start = place.shift + clip.start
+        const bounds: [number, number] = [start, start + clip.duration]
+        sources.push(
+          ...collectFrom(
+            project,
+            sequence.tracks,
+            {
+              shift: start - clip.offset,
+              bounds: place.bounds
+                ? [Math.max(bounds[0], place.bounds[0]), Math.min(bounds[1], place.bounds[1])]
+                : bounds,
+              gain: place.gain * clip.volume,
+              trackId: place.trackId ?? track.id
+            },
+            depth + 1
+          )
+        )
+        continue
+      }
+      if (!isAudibleClip(clip)) continue
       // Frame holds and speed-ramped clips are silent.
       if (clip.type === 'video' && (clip.audioMuted || clip.hold || hasRamp(clip))) continue
       const into = track.transitions.find((t) => t.rightClipId === clip.id)
       const out = track.transitions.find((t) => t.leftClipId === clip.id)
-      sources.push({
-        clip,
-        trackId: track.id,
+      const source: AudioSource = {
+        clip: place.shift ? { ...clip, start: clip.start + place.shift } : clip,
+        trackId: place.trackId ?? track.id,
         mediaId: clip.mediaId,
         crossIn: into ? into.duration / 2 : 0,
         crossOut: out ? out.duration / 2 : 0
-      })
+      }
+      if (place.bounds) {
+        if (source.clip.start + source.clip.duration + source.crossOut <= place.bounds[0]) continue
+        if (source.clip.start - source.crossIn >= place.bounds[1]) continue
+        source.bounds = place.bounds
+      }
+      if (place.gain !== 1) source.gain = place.gain
+      sources.push(source)
     }
   }
   return sources
@@ -273,8 +362,9 @@ export function gainAt(clip: AudibleClip, localFrame: number): number {
  * Outside the clip (and its crossfade overhang) it is silent.
  */
 export function sourceGainAt(source: AudioSource, localFrame: number): number {
-  const { clip, crossIn, crossOut } = source
+  const { clip, crossIn, crossOut, bounds } = source
   if (localFrame < -crossIn || localFrame > clip.duration + crossOut) return 0
+  if (bounds && (clip.start + localFrame < bounds[0] || clip.start + localFrame > bounds[1])) return 0
   let gain = gainAt(clip, Math.max(0, Math.min(clip.duration, localFrame)))
   if (crossIn > 0) {
     const t = (localFrame + crossIn) / (2 * crossIn)
@@ -284,5 +374,5 @@ export function sourceGainAt(source: AudioSource, localFrame: number): number {
     const t = (localFrame - (clip.duration - crossOut)) / (2 * crossOut)
     if (t > 0) gain *= Math.cos(Math.min(1, t) * (Math.PI / 2))
   }
-  return gain
+  return gain * (source.gain ?? 1)
 }

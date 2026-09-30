@@ -1,7 +1,9 @@
 import {
   applyGain,
+  breakApart,
   clipAtFrame,
   collectAudioSources,
+  createCompound,
   duckClip,
   invertRanges,
   sourceRangesToLocal,
@@ -344,4 +346,23 @@ export function toggleDisabled(): void {
 export function nudgeSelection(frames: number): void {
   const targets = editTargets(state().selection)
   if (targets.length > 0) edit('Nudge clips', (draft) => void nudgeClips(draft, targets, frames))
+}
+
+/** Turns the selection (with linked clips) into one compound clip. */
+export function makeCompound(): void {
+  const targets = editTargets(state().selection)
+  if (targets.length === 0) return
+  let id: Id | null = null
+  edit('Create compound clip', (draft) => void (id = createCompound(draft, targets)))
+  if (id) select([id])
+}
+
+/** Puts the clips of the selected compound clips back on the timeline. */
+export function breakApartSelection(): void {
+  const { project, selection } = state()
+  const compounds = selection.filter((id) => findClip(project, id)?.clip.type === 'compound')
+  if (compounds.length === 0) return
+  let restored: Id[] = []
+  edit('Break apart', (draft) => void (restored = compounds.flatMap((id) => breakApart(draft, id))))
+  select(restored)
 }

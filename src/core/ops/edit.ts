@@ -4,6 +4,7 @@ import type { AudioClip, Clip, Id, MediaAsset, Project, Track, TrackKind } from 
 import { hasEffects, isAudibleClip, isVisualClip, trackKindFor } from '../model/types'
 import { linkedPartners, pruneLinks, relinkCopies } from './link'
 import {
+  allTracks,
   animatablesOf,
   clipEnd,
   findClip,
@@ -84,7 +85,7 @@ export function addMedia(project: Project, asset: MediaAsset): void {
 
 export function removeMedia(project: Project, mediaId: Id): void {
   project.media = project.media.filter((m) => m.id !== mediaId)
-  for (const track of project.tracks) {
+  for (const track of allTracks(project)) {
     track.clips = track.clips.filter((c) => !('mediaId' in c) || c.mediaId !== mediaId)
     normalizeTrack(track)
   }
@@ -165,7 +166,8 @@ export function moveClips(project: Project, moves: readonly ClipMove[]): boolean
 
 /** Moves `sourceIn` by `frames` timeline frames' worth of source (frame holds keep theirs). */
 function shiftSource(project: Project, clip: Clip, frames: number): void {
-  if ('sourceIn' in clip && !isHold(clip))
+  if (clip.type === 'compound') clip.offset = Math.max(0, clip.offset + frames)
+  else if ('sourceIn' in clip && !isHold(clip))
     clip.sourceIn = Math.max(0, clip.sourceIn + sourceOffset(clip, frames, project.settings.fps))
 }
 
