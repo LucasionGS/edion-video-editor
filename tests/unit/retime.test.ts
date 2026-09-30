@@ -6,6 +6,8 @@ import {
   evaluateScene,
   findClip,
   insertFrameHold,
+  parseSceneTimes,
+  splitAtSourceTimes,
   rippleTrim,
   setClipSpeed,
   setReversed,
@@ -120,5 +122,26 @@ describe('frame hold', () => {
     expect(slipClip(project, holdId, 30)).toBe(30)
     expect(video(project, holdId).sourceIn).toBeCloseTo(start + 1)
     expect(clipEnd(video(project, holdId))).toBe(1000)
+  })
+})
+
+describe('scene detection', () => {
+  it('parses showinfo times and splits the clip there, linked audio included', () => {
+    const log = `[Parsed_showinfo_1 @ 0x1] n:   0 pts:  48000 pts_time:1.6     duration: 512
+[Parsed_showinfo_1 @ 0x1] n:   1 pts: 105000 pts_time:3.5 ...`
+    expect(parseSceneTimes(log, 2)).toEqual([3.6, 5.5])
+    const { project, clips } = projectWithClips([0, 150])
+    const clip = clips[0]!
+    clip.sourceIn = 2
+    detachAudio(project, clip.id)
+    // 3.6 s is 1.6 s into the clip (frame 48); 5.5 s is 3.5 s in (frame 105); 9 s lies outside the clip.
+    expect(splitAtSourceTimes(project, clip.id, [3.6, 5.5, 9])).toBe(2)
+    expect(project.tracks[0]!.clips.map((c) => [c.start, c.duration])).toEqual([
+      [0, 48],
+      [48, 57],
+      [105, 45]
+    ])
+    expect(project.tracks.find((t) => t.kind === 'audio')!.clips).toHaveLength(3)
+    assertTrackInvariants(project)
   })
 })

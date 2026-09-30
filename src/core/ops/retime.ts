@@ -2,7 +2,7 @@ import { evaluate } from '../keyframes/animatable'
 import type { Id, Project, VideoClip } from '../model/types'
 import { cloneClip, insertClip, normalizeTrack, splitClip } from './edit'
 import { linkedPartners } from './link'
-import { animatablesOf, clipEnd, findClip, sourceTimeAt } from './query'
+import { animatablesOf, clipEnd, findClip, framesForOffset, isHold, sourceTimeAt } from './query'
 
 /** Reverse playback and frame holds. */
 
@@ -122,4 +122,33 @@ export function applySpeedRamp(project: Project, clipId: Id, preset: SpeedRampPr
   clip.speedRamp = { value: 1, keyframes }
   // A ramp is silent; reverse playback ignores it, so the two do not mix.
   delete clip.reversed
+}
+
+/** Reads the frame times from FFmpeg `showinfo` output (after a scene-change `select`), shifted by `offset`. */
+export function parseSceneTimes(log: string, offset: number): number[] {
+  return [...log.matchAll(/pts_time:\s*(-?[\d.]+)/g)].map((m) => offset + Number(m[1]))
+}
+
+/**
+ * Cuts a clip (and its linked clips) wherever its source reaches one of `times` (source seconds), e.g. at
+ * detected scene changes. Returns how many cuts were made.
+ */
+export function splitAtSourceTimes(project: Project, clipId: Id, times: readonly number[]): number {
+  const found = findClip(project, clipId)
+  if (!found || found.track.locked || !('sourceIn' in found.clip) || isHold(found.clip)) return 0
+  const clip = found.clip
+  const { fps } = project.settings
+  const frames = times
+    .map((t) =>
+      clip.reversed
+        ? clip.duration - ((t - clip.sourceIn) * fps) / clip.speed
+        : framesForOffset(clip, t - clip.sourceIn, fps)
+    )
+    .map((f) => clip.start + Math.round(f))
+    .filter((f) => f > clip.start && f < clipEnd(clip))
+  // Latest first, so the original id keeps holding everything before the next cut.
+  let cuts = 0
+  for (const frame of [...new Set(frames)].sort((a, b) => b - a))
+    if (splitClip(project, clipId, frame)) cuts++
+  return cuts
 }

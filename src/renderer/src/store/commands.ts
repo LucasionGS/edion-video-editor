@@ -5,6 +5,7 @@ import {
   duckClip,
   invertRanges,
   sourceRangesToLocal,
+  splitAtSourceTimes,
   cloneClip,
   closeGap,
   DEFAULT_TRANSITION_SECONDS,
@@ -301,4 +302,23 @@ export async function duckUnderSpeech(clipId: Id): Promise<void> {
     dips ? `Lowered the clip in ${dips} place${dips > 1 ? 's' : ''}.` : 'No speech found under this clip.',
     dips ? 'success' : 'info'
   )
+}
+
+/** Cuts a video clip at every shot change FFmpeg detects in the part of the source it uses. */
+export async function splitAtScenes(clipId: Id): Promise<void> {
+  const { project } = state()
+  const clip = findClip(project, clipId)?.clip
+  if (!clip || clip.type !== 'video') return
+  const media = findMedia(project, clip.mediaId)
+  if (!media) return
+  toast('Looking for scene changes…')
+  const times = await window.edion.library.scenes(
+    media.path,
+    clip.sourceIn,
+    sourceSpan(clip, project.settings.fps),
+    0.35
+  )
+  let cuts = 0
+  edit('Split at scene changes', (draft) => void (cuts = splitAtSourceTimes(draft, clipId, times)))
+  toast(cuts ? `Split into ${cuts + 1} shots.` : 'No scene changes found.', cuts ? 'success' : 'info')
 }

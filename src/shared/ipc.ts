@@ -305,6 +305,8 @@ export interface EdionMediaLibraryApi {
    * when unsaved) and returns its path. Reuses an existing copy made with the same settings.
    */
   derive(path: string, kind: DeriveKind, strength: number, projectPath: string | null): Promise<string>
+  /** Source times where the picture cuts to a new shot (scene score above `threshold`, 0-1). */
+  scenes(path: string, start: number, duration: number, threshold: number): Promise<number[]>
   /** Pauses quieter than `thresholdDb` lasting at least `minSeconds`, as [start, end] source seconds. */
   silences(
     path: string,
@@ -358,7 +360,8 @@ export const LIBRARY_IPC = {
   loudness: 'library:loudness',
   collect: 'library:collect',
   silences: 'library:silences',
-  derive: 'library:derive'
+  derive: 'library:derive',
+  scenes: 'library:scenes'
 } as const
 
 export const SETTINGS_IPC = { get: 'settings:get', update: 'settings:update' } as const

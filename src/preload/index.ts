@@ -73,6 +73,8 @@ const api: EdionApi = {
     collect: (paths, folder) => ipcRenderer.invoke(LIBRARY_IPC.collect, paths, folder),
     derive: (path, kind, strength, projectPath) =>
       ipcRenderer.invoke(LIBRARY_IPC.derive, path, kind, strength, projectPath),
+    scenes: (path, start, duration, threshold) =>
+      ipcRenderer.invoke(LIBRARY_IPC.scenes, path, start, duration, threshold),
     silences: (path, start, duration, thresholdDb, minSeconds) =>
       ipcRenderer.invoke(LIBRARY_IPC.silences, path, start, duration, thresholdDb, minSeconds)
   },

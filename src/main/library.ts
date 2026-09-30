@@ -16,6 +16,7 @@ import {
 } from '@shared/ipc'
 import { parseEbur128, type Loudness } from '@core/audio/loudness'
 import { parseSilences } from '@core/audio/silence'
+import { parseSceneTimes } from '@core/ops/retime'
 import { backgroundJobs, runFfmpeg } from './ffmpeg/jobs'
 import { resolveFfmpeg } from './ffmpeg/paths'
 import { probe } from './ffmpeg/probe'
@@ -318,6 +319,9 @@ export function registerLibraryIpc(): void {
         }
       )
   )
+  ipcMain.handle(LIBRARY_IPC.scenes, (_e, path: string, start: number, duration: number, threshold: number) =>
+    backgroundJobs.run(() => detectScenes(path, start, duration, threshold))
+  )
   ipcMain.handle(
     LIBRARY_IPC.silences,
     (_e, path: string, start: number, duration: number, thresholdDb: number, minSeconds: number) =>
@@ -354,6 +358,44 @@ async function analyzeAudio(path: string, start: number, duration: number, filte
 
 async function measureLoudness(path: string, start: number, duration: number): Promise<Loudness | null> {
   return parseEbur128(await analyzeAudio(path, start, duration, 'ebur128=peak=true'))
+}
+
+/** Frame times (source seconds) where the picture changes by more than `threshold` (0-1). */
+async function detectScenes(
+  path: string,
+  start: number,
+  duration: number,
+  threshold: number
+): Promise<number[]> {
+  const { ffmpegPath } = await resolveFfmpeg()
+  const args = [
+    '-hide_banner',
+    '-nostats',
+    '-nostdin',
+    '-loglevel',
+    'info',
+    '-ss',
+    String(Math.max(0, start))
+  ]
+  // Scaled down first: the scene score only needs a rough picture, and it is much faster.
+  args.push(
+    '-t',
+    String(duration),
+    '-i',
+    path,
+    '-an',
+    '-vf',
+    `scale=320:-2,select='gt(scene,${threshold})',showinfo`
+  )
+  args.push('-f', 'null', '-')
+  const log = await new Promise<string>((resolvePromise) => {
+    const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    let output = ''
+    child.stderr.on('data', (d: Buffer) => (output += d.toString()))
+    child.once('error', () => resolvePromise(''))
+    child.once('close', () => resolvePromise(output))
+  })
+  return parseSceneTimes(log, start)
 }
 
 async function detectSilences(

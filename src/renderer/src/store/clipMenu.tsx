@@ -7,6 +7,7 @@ import {
   Bookmark,
   Blend,
   BetweenHorizontalStart,
+  Clapperboard,
   ClipboardPaste,
   Copy,
   CopyPlus,
@@ -63,6 +64,7 @@ import {
   paste,
   selectAll,
   splitAtPlayhead,
+  splitAtScenes,
   toggleLink
 } from './commands'
 import { openDialog, promptText } from './dialogs'
@@ -341,6 +343,12 @@ export function clipMenuItems(): MenuItem[] {
       icon: <Wind size={13} />,
       onSelect: () => void processClip(silenceTarget.id, 'denoise')
     })
+    if (silenceTarget.type === 'video')
+      items.push({
+        label: 'Split at scene changes',
+        icon: <Clapperboard size={13} />,
+        onSelect: () => void splitAtScenes(silenceTarget.id)
+      })
     if (silenceTarget.type === 'video')
       items.push({
         label: 'Stabilize',
