@@ -145,6 +145,11 @@ export const EFFECTS: readonly EffectSpec[] = [
     }
   },
   {
+    type: 'blurFill',
+    label: 'Blurred background',
+    params: { radius: px('Blur', 40, 100), brightness: amount('Brightness', 0.7) }
+  },
+  {
     type: 'lut',
     label: 'LUT (.cube)',
     params: { intensity: amount('Intensity') },

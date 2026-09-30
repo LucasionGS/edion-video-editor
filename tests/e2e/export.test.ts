@@ -425,6 +425,33 @@ describe('compositing', () => {
     }
   })
 
+  it('fills the sides with a blurred copy', () => {
+    const project = createProject('fill', { width: 1280, height: 720, fps: FPS })
+    const still: MediaAsset = {
+      id: newId(),
+      kind: 'image',
+      name: 'still',
+      path: join(root, 'tests/fixtures/still.png'),
+      size: 0,
+      duration: 0,
+      width: 400,
+      height: 400,
+      hasAudio: false
+    }
+    addMedia(project, still)
+    const clip = clipFromMedia(still, 0, FPS)
+    clip.duration = 5
+    if (clip.type === 'image') clip.effects.push(effect('blurFill', { radius: 20, brightness: 0.5 }))
+    insertClipAuto(project, clip)
+    const output = exportProject(project, 'blur-fill')
+    // The square covers the middle; the sides, black without the fill, show the dimmed green copy.
+    const [r, g, b] = pixel(output, 2, 60, 360)
+    expect(g).toBeGreaterThan(90)
+    expect(g).toBeLessThan(160)
+    expect(Math.max(r, b)).toBeLessThan(40)
+    expect(pixel(output, 2, 640, 360)[1]).toBeGreaterThan(230)
+  })
+
   it('renders every effect without shader errors', () => {
     const { project, clip } = baseProject()
     clip.duration = 10

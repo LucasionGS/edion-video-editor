@@ -293,6 +293,12 @@ void main() {
   vec3 graded = texture(u_lut, t * (u_lutSize - 1.0) / u_lutSize + 0.5 / u_lutSize).rgb;
   o_color = premultiply(vec4(mix(c.rgb, clamp(graded, 0.0, 1.0), intensity), c.a));
 }`,
+  blurFillTone: `${EFFECT_HEADER}
+uniform float brightness;
+void main() {
+  vec4 c = texture(u_tex, v_uv);
+  o_color = vec4(c.rgb * brightness, c.a);
+}`,
   glowExtract: `${EFFECT_HEADER}
 uniform float threshold;
 void main() {

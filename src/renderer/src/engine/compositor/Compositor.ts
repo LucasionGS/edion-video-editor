@@ -321,23 +321,68 @@ export class Compositor {
     }
     if (!content || layer.transform.opacity <= 0) return null
     const { gl } = this
-    this.cleared(primary)
-
-    const p = this.use('layer', LAYER_VERTEX, LAYER_FRAGMENT)
     const { crop, transform } = layer
-    const u0 = Math.min(crop.left, 0.999)
-    const v0 = Math.min(crop.top, 0.999)
-    const u1 = Math.max(1 - crop.right, u0 + 0.001)
-    const v1 = Math.max(1 - crop.bottom, v0 + 0.001)
-    gl.uniformMatrix3fv(
-      p.uniforms.get('u_matrix')!,
-      false,
-      this.layerMatrix(transform, content.width, content.height)
-    )
-    gl.uniform4f(p.uniforms.get('u_uvRect')!, u0, v0, u1, v1)
-    gl.uniform1f(p.uniforms.get('u_opacity')!, transform.opacity)
-    this.texture(p, 'u_tex', 0, content.texture)
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    const uvRect: [number, number, number, number] = [
+      Math.min(crop.left, 0.999),
+      Math.min(crop.top, 0.999),
+      0,
+      0
+    ]
+    uvRect[2] = Math.max(1 - crop.right, uvRect[0] + 0.001)
+    uvRect[3] = Math.max(1 - crop.bottom, uvRect[1] + 0.001)
+    const draw = (matrix: Float32Array, rect: typeof uvRect): void => {
+      const p = this.use('layer', LAYER_VERTEX, LAYER_FRAGMENT)
+      gl.uniformMatrix3fv(p.uniforms.get('u_matrix')!, false, matrix)
+      gl.uniform4f(p.uniforms.get('u_uvRect')!, ...rect)
+      gl.uniform1f(p.uniforms.get('u_opacity')!, transform.opacity)
+      this.texture(p, 'u_tex', 0, content.texture)
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    }
+
+    // "Blurred background": a blurred copy of the picture, zoomed to cover the frame, behind the layer.
+    const fill = layer.effects.find((e) => e.type === 'blurFill')
+    if (fill) {
+      const [fxA, fxB] = [this.targets[6]!, this.targets[7]!]
+      const W = this.width / this.scale
+      const H = this.height / this.scale
+      const w = content.width * (uvRect[2] - uvRect[0])
+      const h = content.height * (uvRect[3] - uvRect[1])
+      const cover = Math.max(W / Math.max(w, 1), H / Math.max(h, 1))
+      this.cleared(fxA)
+      draw(
+        this.layerMatrix(
+          { x: 0, y: 0, scaleX: cover, scaleY: cover, rotation: 0, opacity: 1, anchorX: 0.5, anchorY: 0.5 },
+          content.width,
+          content.height
+        ),
+        uvRect
+      )
+      const radius = (fill.params['radius'] ?? 40) * this.scale
+      const blur = (from: Target, to: Target, x: number, y: number): void => {
+        this.bind(to)
+        const program = this.use('effect:blur', FULLSCREEN_VERTEX, EFFECT_FRAGMENTS['blur']!)
+        this.texture(program, 'u_tex', 0, from.texture)
+        gl.uniform2f(program.uniforms.get('u_texel')!, 1 / this.width, 1 / this.height)
+        gl.uniform1f(program.uniforms.get('radius')!, radius)
+        gl.uniform2f(program.uniforms.get('u_direction')!, x, y)
+        this.drawFullscreen(program)
+      }
+      blur(fxA, fxB, 1, 0)
+      blur(fxB, fxA, 0, 1)
+      this.bind(primary)
+      const tone = this.use('effect:blurFillTone', FULLSCREEN_VERTEX, EFFECT_FRAGMENTS['blurFillTone']!)
+      this.texture(tone, 'u_tex', 0, fxA.texture)
+      gl.uniform1f(tone.uniforms.get('brightness')!, fill.params['brightness'] ?? 0.7)
+      this.drawFullscreen(tone)
+      // The layer itself goes over the background (premultiplied "over").
+      gl.enable(gl.BLEND)
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+      draw(this.layerMatrix(transform, content.width, content.height), uvRect)
+      gl.disable(gl.BLEND)
+    } else {
+      this.cleared(primary)
+      draw(this.layerMatrix(transform, content.width, content.height), uvRect)
+    }
 
     return this.applyEffects(layer.effects, primary, scratch, source)
   }
@@ -428,6 +473,9 @@ export class Compositor {
           })
           break
         }
+        case 'blurFill':
+          // Drawn with the layer itself (see renderLayer).
+          break
         default: {
           const spec = effectSpec(effect.type)
           const params = { ...p }
