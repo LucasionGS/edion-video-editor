@@ -15,7 +15,7 @@ import type {
   VisualClip
 } from '../model/types'
 import { isAudibleClip, isVisualClip } from '../model/types'
-import { clipEnd, findMedia, sourceTimeAt } from '../ops/query'
+import { clipEnd, findMedia, hasRamp, sourceTimeAt } from '../ops/query'
 
 /**
  * Turns (project, frame) into a flat, fully resolved description of what to draw.
@@ -218,7 +218,8 @@ export function collectAudioSources(project: Project): AudioSource[] {
     if (track.muted || (anySolo && !track.solo)) continue
     for (const clip of track.clips) {
       if (!isAudibleClip(clip)) continue
-      if (clip.type === 'video' && (clip.audioMuted || clip.hold)) continue
+      // Frame holds and speed-ramped clips are silent.
+      if (clip.type === 'video' && (clip.audioMuted || clip.hold || hasRamp(clip))) continue
       const into = track.transitions.find((t) => t.rightClipId === clip.id)
       const out = track.transitions.find((t) => t.leftClipId === clip.id)
       sources.push({

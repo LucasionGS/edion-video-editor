@@ -114,7 +114,12 @@ export const videoClipSchema = z.object({
   /** True once the audio was detached into its own clip (or the source has none). */
   audioMuted: z.boolean(),
   /** A frame hold: shows the source frame at `sourceIn` for the whole clip, silently. */
-  hold: z.boolean().optional()
+  hold: z.boolean().optional(),
+  /**
+   * Time remapping: a keyframeable multiplier on `speed`. The clip keeps its length and uses more or less
+   * of its source; its sound is muted while a ramp is active.
+   */
+  speedRamp: animNumberSchema.optional()
 })
 export const audioClipSchema = z.object({ ...clipBase, ...timed, ...audible, type: z.literal('audio') })
 export const imageClipSchema = z.object({

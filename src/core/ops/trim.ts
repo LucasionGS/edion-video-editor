@@ -1,7 +1,7 @@
 import type { Clip, Id, Project, Track } from '../model/types'
 import { clampFades, cutHead, cutTail, normalizeTrack } from './edit'
 import { linkedPartners } from './link'
-import { clipEnd, findClip, findTrack, isHold, sourceHandles, sourceSlack } from './query'
+import { clipEnd, findClip, findTrack, handleFrames, isHold, sourceSlack } from './query'
 
 /**
  * The editing tools beyond plain trimming: ripple, roll, slip and slide, plus closing gaps.
@@ -10,15 +10,6 @@ import { clipEnd, findClip, findTrack, isHold, sourceHandles, sourceSlack } from
  */
 
 const EPSILON = 1e-6
-
-/** Source media still available before and after the clip, in timeline frames. */
-function handleFrames(project: Project, clip: Clip): { head: number; tail: number } {
-  const { head, tail } = sourceHandles(project, clip)
-  const speed = 'speed' in clip ? clip.speed : 1
-  const frames = (seconds: number): number =>
-    seconds === Infinity ? Infinity : Math.floor((seconds * project.settings.fps) / speed + EPSILON)
-  return { head: frames(head), tail: frames(tail) }
-}
 
 interface Located {
   clip: Clip

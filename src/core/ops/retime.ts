@@ -49,6 +49,7 @@ export function insertFrameHold(project: Project, clipId: Id, frame: number, hol
     fadeOut: 0
   })
   delete hold.reversed
+  delete hold.speedRamp
   delete hold.linkId
 
   const tracks = new Set([found.track])
@@ -64,4 +65,61 @@ export function insertFrameHold(project: Project, clipId: Id, frame: number, hol
   }
   insertClip(project, found.track.id, hold)
   return hold.id
+}
+
+export type SpeedRampPreset = 'none' | 'slowMiddle' | 'fastMiddle' | 'speedUp' | 'slowDown'
+
+export const SPEED_RAMP_PRESETS: ReadonlyArray<{ value: SpeedRampPreset; label: string }> = [
+  { value: 'none', label: 'No ramp' },
+  { value: 'slowMiddle', label: 'Slow motion in the middle' },
+  { value: 'fastMiddle', label: 'Fast forward in the middle' },
+  { value: 'speedUp', label: 'Speed up' },
+  { value: 'slowDown', label: 'Slow down' }
+]
+
+/** Replaces a video clip's speed ramp with a preset; its keyframes can be fine-tuned afterwards. */
+export function applySpeedRamp(project: Project, clipId: Id, preset: SpeedRampPreset): void {
+  const found = findClip(project, clipId)
+  if (!found || found.track.locked || found.clip.type !== 'video' || found.clip.hold) return
+  const clip = found.clip
+  if (preset === 'none') {
+    delete clip.speedRamp
+    return
+  }
+  const last = clip.duration - 1
+  const at = (fraction: number): number => Math.round(fraction * last)
+  const points: Array<[number, number]> =
+    preset === 'slowMiddle'
+      ? [
+          [0, 1],
+          [0.3, 1],
+          [0.42, 0.25],
+          [0.58, 0.25],
+          [0.7, 1],
+          [1, 1]
+        ]
+      : preset === 'fastMiddle'
+        ? [
+            [0, 1],
+            [0.3, 1],
+            [0.42, 4],
+            [0.58, 4],
+            [0.7, 1],
+            [1, 1]
+          ]
+        : preset === 'speedUp'
+          ? [
+              [0, 1],
+              [1, 3]
+            ]
+          : [
+              [0, 1],
+              [1, 0.3]
+            ]
+  const keyframes = points
+    .map(([fraction, value]) => ({ frame: at(fraction), value, easing: 'easeInOut' as const }))
+    .filter((k, i, all) => i === 0 || k.frame > all[i - 1]!.frame)
+  clip.speedRamp = { value: 1, keyframes }
+  // A ramp is silent; reverse playback ignores it, so the two do not mix.
+  delete clip.reversed
 }

@@ -6,6 +6,8 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   addMedia,
+  applySpeedRamp,
+  sourceTimeAt,
   createAdjustmentClip,
   EFFECTS,
   clipFromMedia,
@@ -330,6 +332,20 @@ describe('time', () => {
     for (const n of [0, 1, 40, 77, last]) expect(framePsnr(output, n, fixture, last - n)).toBeGreaterThan(35)
     // Sanity check: the forward frame at the same index is different.
     expect(framePsnr(output, 0, fixture, 0)).toBeLessThan(25)
+  })
+
+  it('follows a speed ramp frame by frame', () => {
+    const { project, clip } = baseProject()
+    clip.duration = 60
+    applySpeedRamp(project, clip.id, 'speedUp')
+    const output = exportProject(project, 'ramp')
+    for (const n of [0, 20, 40, 59]) {
+      // The decoder shows the last frame at or before the source time, forgiving 0.4 frame of drift.
+      const source = Math.floor(sourceTimeAt(clip, n, FPS) * FPS + 0.4)
+      expect(framePsnr(output, n, fixture, source), `frame ${n} ← source ${source}`).toBeGreaterThan(35)
+    }
+    // Speeding up: the last frame comes from well beyond frame 59 of the source.
+    expect(sourceTimeAt(clip, 59, FPS) * FPS).toBeGreaterThan(90)
   })
 
   it('holds a frame', () => {

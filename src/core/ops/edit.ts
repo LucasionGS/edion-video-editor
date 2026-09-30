@@ -3,14 +3,22 @@ import { createTrack, newId } from '../model/factory'
 import type { AudioClip, Clip, Id, MediaAsset, Project, Track, TrackKind } from '../model/types'
 import { hasEffects, isAudibleClip, isVisualClip, trackKindFor } from '../model/types'
 import { linkedPartners, pruneLinks, relinkCopies } from './link'
-import { animatablesOf, clipEnd, findClip, findTrack, isFree, isHold, sourceHandles } from './query'
+import {
+  animatablesOf,
+  clipEnd,
+  findClip,
+  findTrack,
+  handleFrames,
+  hasRamp,
+  isFree,
+  isHold,
+  sourceOffset
+} from './query'
 
 /**
  * Timeline edit operations. They mutate their `project` argument, so call them on an Immer draft
  * (see History). Every op leaves each track sorted, overlap-free and with only valid transitions.
  */
-
-const EPSILON = 1e-6
 
 /** Restores the track invariants after an edit (sorted clips, only valid transitions). */
 export function normalizeTrack(track: Track): void {
@@ -158,7 +166,7 @@ export function moveClips(project: Project, moves: readonly ClipMove[]): boolean
 /** Moves `sourceIn` by `frames` timeline frames' worth of source (frame holds keep theirs). */
 function shiftSource(project: Project, clip: Clip, frames: number): void {
   if ('sourceIn' in clip && !isHold(clip))
-    clip.sourceIn = Math.max(0, clip.sourceIn + (frames / project.settings.fps) * clip.speed)
+    clip.sourceIn = Math.max(0, clip.sourceIn + sourceOffset(clip, frames, project.settings.fps))
 }
 
 /**
@@ -184,23 +192,13 @@ export function trimRange(project: Project, clipId: Id, edge: 'start' | 'end'): 
   const found = findClip(project, clipId)
   if (!found) return null
   const { clip, track, index } = found
-  const { fps } = project.settings
-  const speed = 'speed' in clip ? clip.speed : 1
-  const handles = sourceHandles(project, clip)
-  const handleFrames = (seconds: number): number =>
-    seconds === Infinity ? Infinity : Math.floor((seconds * fps) / speed + EPSILON)
+  const handles = handleFrames(project, clip)
   if (edge === 'start') {
     const previous = track.clips[index - 1]
-    return [
-      Math.max(previous ? clipEnd(previous) : 0, clip.start - handleFrames(handles.head)),
-      clipEnd(clip) - 1
-    ]
+    return [Math.max(previous ? clipEnd(previous) : 0, clip.start - handles.head), clipEnd(clip) - 1]
   }
   const following = track.clips[index + 1]
-  return [
-    clip.start + 1,
-    Math.min(following ? following.start : Infinity, clipEnd(clip) + handleFrames(handles.tail))
-  ]
+  return [clip.start + 1, Math.min(following ? following.start : Infinity, clipEnd(clip) + handles.tail)]
 }
 
 /** Trims an edge to `frame`, clamped by `trimRange`. Returns the frame used. */
@@ -402,6 +400,8 @@ function setSpeedOne(project: Project, clipId: Id, speed: number): void {
 export function detachAudio(project: Project, clipId: Id): Id | null {
   const found = findClip(project, clipId)
   if (!found || found.clip.type !== 'video' || found.clip.audioMuted || found.clip.hold) return null
+  // A ramped clip is silent; its sound would not follow the ramp.
+  if (hasRamp(found.clip)) return null
   const video = found.clip
   const audio: AudioClip = {
     id: newId(),

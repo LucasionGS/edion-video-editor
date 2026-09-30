@@ -28,10 +28,21 @@ import {
   isVisualClip,
   newId,
   parseCube,
+  applySpeedRamp,
+  hasRamp,
   setClipSpeed,
+  SPEED_RAMP_PRESETS,
   setReversed
 } from '@core/index'
-import type { AdjustmentClip, AnimationPreset, BlendMode, Clip, TextStyle, VisualClip } from '@core/index'
+import type {
+  AdjustmentClip,
+  AnimationPreset,
+  BlendMode,
+  Clip,
+  SpeedRampPreset,
+  TextStyle,
+  VisualClip
+} from '@core/index'
 import { edit, select, useEditor } from '@/store/editor'
 import { editClips } from '@/store/clipEdits'
 import { insertHoldAtPlayhead, normalizeLoudness } from '@/store/commands'
@@ -277,6 +288,38 @@ function SpeedSection({ clip }: { clip: Extract<Clip, { type: 'video' | 'audio' 
           }
         />
       </Row>
+      {clip.type === 'video' && (
+        <>
+          <Row label="Ramp">
+            <Select
+              value=""
+              onChange={(e) =>
+                edit('Speed ramp', (d) => applySpeedRamp(d, clip.id, e.target.value as SpeedRampPreset))
+              }
+            >
+              <option value="" disabled>
+                {clip.speedRamp ? 'Custom ramp' : 'Apply a preset…'}
+              </option>
+              {SPEED_RAMP_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          </Row>
+          {clip.speedRamp && (
+            <AnimNumberRow
+              clip={clip}
+              label="Ramp speed"
+              get={(c) => (c.type === 'video' ? c.speedRamp : undefined)}
+              spec={{ ...percent, min: 5, max: 1000 }}
+            />
+          )}
+          {hasRamp(clip) && (
+            <p className="text-2xs text-faint">The clip is silent while a speed ramp is active.</p>
+          )}
+        </>
+      )}
       {clip.type === 'video' && (
         <Button
           className="mt-1 self-start"

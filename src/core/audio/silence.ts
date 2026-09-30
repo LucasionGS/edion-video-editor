@@ -3,7 +3,7 @@ import { deleteClips, splitClip } from '../ops/edit'
 import { withLinked } from '../ops/link'
 import { evaluate } from '../keyframes/animatable'
 import { isAudibleClip } from '../model/types'
-import { clipEnd, findClip, isHold, type TimedClip } from '../ops/query'
+import { clipEnd, findClip, framesForOffset, isHold, type TimedClip } from '../ops/query'
 
 /** "Remove silence": find the quiet parts of a clip's sound and cut them out (jump cuts). */
 
@@ -94,8 +94,8 @@ export function sourceRangesToLocal(
   fps: number
 ): Array<[number, number]> {
   const local = (seconds: number): number => {
-    const frames = ((seconds - clip.sourceIn) * fps) / clip.speed
-    return clip.reversed ? clip.duration - frames : frames
+    if (clip.reversed) return clip.duration - ((seconds - clip.sourceIn) * fps) / clip.speed
+    return framesForOffset(clip, seconds - clip.sourceIn, fps)
   }
   const spans = ranges
     .map(([a, b]) => {
