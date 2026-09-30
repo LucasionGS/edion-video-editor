@@ -1,7 +1,9 @@
 import type { Id, Project } from '../model/types'
 import { deleteClips, splitClip } from '../ops/edit'
 import { withLinked } from '../ops/link'
-import { clipEnd, findClip, isHold } from '../ops/query'
+import { evaluate } from '../keyframes/animatable'
+import { isAudibleClip } from '../model/types'
+import { clipEnd, findClip, isHold, type TimedClip } from '../ops/query'
 
 /** "Remove silence": find the quiet parts of a clip's sound and cut them out (jump cuts). */
 
@@ -53,26 +55,7 @@ export function removeSourceRanges(
   const found = findClip(project, clipId)
   if (!found || found.track.locked || !('sourceIn' in found.clip) || isHold(found.clip)) return 0
   const clip = found.clip
-  const { fps } = project.settings
-  // Source seconds → clip-relative frames (a reversed clip runs its source backwards).
-  const local = (seconds: number): number => {
-    const frames = ((seconds - clip.sourceIn) * fps) / clip.speed
-    return clip.reversed ? clip.duration - frames : frames
-  }
-  const spans = ranges
-    .map(([a, b]) => {
-      const [x, y] = [local(a), local(b)].sort((p, q) => p - q) as [number, number]
-      return [Math.max(0, Math.round(x)), Math.min(clip.duration, Math.round(y))] as [number, number]
-    })
-    .filter(([from, to]) => to - from >= 1)
-    .sort((p, q) => p[0] - q[0])
-  // Merge overlaps so each frame is removed once.
-  const merged: Array<[number, number]> = []
-  for (const span of spans) {
-    const last = merged[merged.length - 1]
-    if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1])
-    else merged.push([...span])
-  }
+  const merged = sourceRangesToLocal(clip, ranges, project.settings.fps)
 
   const origin = clip.start
   let removed = 0
@@ -99,4 +82,109 @@ export function padSilences(
   return ranges
     .map(([a, b]) => [a + paddingSeconds, b - paddingSeconds] as [number, number])
     .filter(([a, b]) => b - a > 0.01)
+}
+
+/**
+ * Source-second ranges of a clip's media as clip-relative frame spans, clamped to the clip, sorted and
+ * merged. A reversed clip runs its source backwards.
+ */
+export function sourceRangesToLocal(
+  clip: TimedClip,
+  ranges: ReadonlyArray<readonly [number, number]>,
+  fps: number
+): Array<[number, number]> {
+  const local = (seconds: number): number => {
+    const frames = ((seconds - clip.sourceIn) * fps) / clip.speed
+    return clip.reversed ? clip.duration - frames : frames
+  }
+  const spans = ranges
+    .map(([a, b]) => {
+      const [x, y] = [local(a), local(b)].sort((p, q) => p - q) as [number, number]
+      return [Math.max(0, Math.round(x)), Math.min(clip.duration, Math.round(y))] as [number, number]
+    })
+    .filter(([from, to]) => to - from >= 1)
+    .sort((p, q) => p[0] - q[0])
+  return mergeSpans(spans)
+}
+
+/** Sorted spans with overlapping (or touching within `gap`) ones joined. */
+export function mergeSpans(
+  spans: ReadonlyArray<readonly [number, number]>,
+  gap = 0
+): Array<[number, number]> {
+  const merged: Array<[number, number]> = []
+  for (const span of [...spans].sort((p, q) => p[0] - q[0])) {
+    const last = merged[merged.length - 1]
+    if (last && span[0] <= last[1] + gap) last[1] = Math.max(last[1], span[1])
+    else merged.push([span[0], span[1]])
+  }
+  return merged
+}
+
+/** The parts of [from, to] that are not silent. */
+export function invertRanges(
+  silences: ReadonlyArray<readonly [number, number]>,
+  from: number,
+  to: number
+): Array<[number, number]> {
+  const sound: Array<[number, number]> = []
+  let cursor = from
+  for (const [a, b] of mergeSpans(silences)) {
+    if (a > cursor) sound.push([cursor, Math.min(a, to)])
+    cursor = Math.max(cursor, b)
+  }
+  if (cursor < to) sound.push([cursor, to])
+  return sound.filter(([a, b]) => b > a)
+}
+
+export interface DuckOptions {
+  /** How far the music drops while someone speaks, in dB (negative). */
+  depthDb: number
+  /** Ramp length down and back up, in seconds. */
+  fadeSeconds: number
+}
+
+export const DEFAULT_DUCK_OPTIONS: DuckOptions = { depthDb: -12, fadeSeconds: 0.3 }
+
+/**
+ * Writes volume keyframes on a clip so it dips by `depthDb` during `speech` (timeline frame spans). Pauses
+ * shorter than the two ramps stay ducked instead of pumping. Replaces any volume animation the clip had.
+ */
+export function duckClip(
+  project: Project,
+  clipId: Id,
+  speech: ReadonlyArray<readonly [number, number]>,
+  options: DuckOptions = DEFAULT_DUCK_OPTIONS
+): number {
+  const found = findClip(project, clipId)
+  if (!found || found.track.locked || !isAudibleClip(found.clip)) return 0
+  const clip = found.clip
+  const fade = Math.max(1, Math.round(options.fadeSeconds * project.settings.fps))
+  const level = evaluate(clip.volume, 0)
+  const low = level * 10 ** (options.depthDb / 20)
+  const spans = mergeSpans(
+    speech
+      .map(([a, b]) => [a - clip.start, b - clip.start] as [number, number])
+      .filter(([a, b]) => b > 0 && a < clip.duration),
+    fade * 2
+  )
+  const keyframes: Array<{ frame: number; value: number }> = []
+  const add = (frame: number, value: number): void => {
+    const f = Math.max(0, Math.min(clip.duration, Math.round(frame)))
+    const last = keyframes[keyframes.length - 1]
+    if (last && f <= last.frame) {
+      last.value = value
+      return
+    }
+    keyframes.push({ frame: f, value })
+  }
+  for (const [a, b] of spans) {
+    add(a - fade, level)
+    add(a, low)
+    add(b, low)
+    add(b + fade, level)
+  }
+  if (keyframes.length === 0) return 0
+  clip.volume = { value: level, keyframes: keyframes.map((k) => ({ ...k, easing: 'linear' as const })) }
+  return spans.length
 }

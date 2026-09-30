@@ -1,6 +1,7 @@
 import {
   AlignCenterHorizontal,
   AlignCenterVertical,
+  ArrowDownToLine,
   AudioLines,
   AudioWaveform,
   Blend,
@@ -54,6 +55,7 @@ import {
   normalizeLoudness,
   cutSelection,
   deleteSelection,
+  duckUnderSpeech,
   duplicateSelection,
   paste,
   selectAll,
@@ -298,6 +300,13 @@ export function clipMenuItems(): MenuItem[] {
     })
   }
   const silenceTarget = only && 'sourceIn' in only && !(only.type === 'video' && only.hold) ? only : undefined
+  if (only && isAudibleClip(only) && !(only.type === 'video' && (only.audioMuted || only.hold))) {
+    items.push({
+      label: 'Duck under other sound',
+      icon: <ArrowDownToLine size={13} />,
+      onSelect: () => void duckUnderSpeech(only.id)
+    })
+  }
   if (silenceTarget) {
     items.push({
       label: 'Remove silence…',

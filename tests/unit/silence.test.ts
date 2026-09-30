@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { detachAudio, padSilences, parseSilences, removeSourceRanges, setReversed } from '@core/index'
+import {
+  detachAudio,
+  duckClip,
+  evaluate,
+  invertRanges,
+  padSilences,
+  parseSilences,
+  removeSourceRanges,
+  setReversed
+} from '@core/index'
 import { assertTrackInvariants, projectWithClips } from './helpers'
 
 const LOG = `[silencedetect @ 0x1] silence_start: 1.2
@@ -69,5 +78,56 @@ describe('silence', () => {
     expect(reversed.project.tracks[0]!.clips.map((c) => [c.start, c.duration])).toEqual([[0, 60]])
     const rest = reversed.project.tracks[0]!.clips[0]!
     expect('sourceIn' in rest && rest.sourceIn).toBe(0)
+  })
+})
+
+describe('ducking', () => {
+  it('finds the sound between silences', () => {
+    expect(
+      invertRanges(
+        [
+          [1, 2],
+          [4, 6]
+        ],
+        0,
+        5
+      )
+    ).toEqual([
+      [0, 1],
+      [2, 4]
+    ])
+    expect(invertRanges([], 0, 3)).toEqual([[0, 3]])
+  })
+
+  it('dips the volume during speech with ramps, bridging short pauses', () => {
+    const { project, clips } = projectWithClips([0, 300])
+    const music = clips[0]!
+    music.volume.value = 0.8
+    // Speech at frames 30-60 and 70-90 (a 10-frame pause, shorter than two 9-frame ramps), then 200-240.
+    expect(
+      duckClip(
+        project,
+        music.id,
+        [
+          [30, 60],
+          [70, 90],
+          [200, 240]
+        ],
+        { depthDb: -20, fadeSeconds: 0.3 }
+      )
+    ).toBe(2)
+    const kfs = music.volume.keyframes!.map((k) => [k.frame, Number(k.value.toFixed(3))])
+    expect(kfs).toEqual([
+      [21, 0.8],
+      [30, 0.08],
+      [90, 0.08],
+      [99, 0.8],
+      [191, 0.8],
+      [200, 0.08],
+      [240, 0.08],
+      [249, 0.8]
+    ])
+    expect(evaluate(music.volume, 60)).toBeCloseTo(0.08)
+    expect(evaluate(music.volume, 150)).toBeCloseTo(0.8)
   })
 })

@@ -1,6 +1,10 @@
 import {
   applyGain,
   clipAtFrame,
+  collectAudioSources,
+  duckClip,
+  invertRanges,
+  sourceRangesToLocal,
   cloneClip,
   closeGap,
   DEFAULT_TRANSITION_SECONDS,
@@ -261,5 +265,40 @@ export async function normalizeLoudness(ids: readonly Id[]): Promise<void> {
     results.length === 1
       ? `Loudness normalized (${db(results[0]!.gain)}).`
       : `Normalized ${results.length} clips.`
+  )
+}
+
+/**
+ * Lowers a clip (music, usually) wherever the other clips under it have sound: their pauses are found
+ * with the same detector as "Remove silence", and the clip gets volume keyframes that dip around speech.
+ */
+export async function duckUnderSpeech(clipId: Id): Promise<void> {
+  const { project } = state()
+  const found = findClip(project, clipId)
+  if (!found || !isAudibleClip(found.clip)) return
+  const music = found.clip
+  const { fps } = project.settings
+  const voices = collectAudioSources(project).filter(
+    ({ clip, trackId }) =>
+      trackId !== found.track.id &&
+      clip.start < music.start + music.duration &&
+      clip.start + clip.duration > music.start
+  )
+  if (voices.length === 0) return toast('Nothing else plays under this clip.')
+  toast('Listening for speech…')
+  const speech: Array<[number, number]> = []
+  for (const { clip } of voices) {
+    const media = findMedia(project, clip.mediaId)
+    if (!media?.hasAudio) continue
+    const span = sourceSpan(clip, fps)
+    const silences = await window.edion.library.silences(media.path, clip.sourceIn, span, -38, 0.35)
+    const sound = invertRanges(silences, clip.sourceIn, clip.sourceIn + span)
+    for (const [a, b] of sourceRangesToLocal(clip, sound, fps)) speech.push([clip.start + a, clip.start + b])
+  }
+  let dips = 0
+  edit('Duck audio', (draft) => void (dips = duckClip(draft, clipId, speech)))
+  toast(
+    dips ? `Lowered the clip in ${dips} place${dips > 1 ? 's' : ''}.` : 'No speech found under this clip.',
+    dips ? 'success' : 'info'
   )
 }
