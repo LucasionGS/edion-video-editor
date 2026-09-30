@@ -4,6 +4,7 @@ import {
   ArrowDownToLine,
   AudioLines,
   AudioWaveform,
+  Bookmark,
   Blend,
   BetweenHorizontalStart,
   ClipboardPaste,
@@ -32,10 +33,12 @@ import {
   DEFAULT_TRANSITION_SECONDS,
   defaultTransform,
   detachAudio,
+  effectSpec,
   evaluate,
   findClip,
   frameScale,
   gapAt,
+  hasEffects,
   isAudibleClip,
   isVisualClip,
   setReversed,
@@ -62,7 +65,8 @@ import {
   splitAtPlayhead,
   toggleLink
 } from './commands'
-import { openDialog } from './dialogs'
+import { openDialog, promptText } from './dialogs'
+import { saveEffectPreset } from './presets'
 import { processClip } from './projectActions'
 import { edit, select, useEditor } from './editor'
 
@@ -193,6 +197,25 @@ export function clipMenuItems(): MenuItem[] {
       onSelect: splitAtPlayhead
     }
   ]
+  const withEffects =
+    clips.length === 1 && hasEffects(clips[0]!) && clips[0]!.effects.length > 0 ? clips[0]! : null
+  if (withEffects && hasEffects(withEffects)) {
+    items.push(
+      { type: 'separator' },
+      {
+        label: 'Save effects as preset…',
+        icon: <Bookmark size={13} />,
+        onSelect: () =>
+          promptText({
+            title: 'Save effect preset',
+            label: 'Name',
+            initial: withEffects.effects.map((e) => effectSpec(e.type)?.label ?? e.type).join(' + '),
+            confirmLabel: 'Save',
+            onSubmit: (name) => void saveEffectPreset(name, withEffects.effects)
+          })
+      }
+    )
+  }
   if (visual) {
     items.push(
       { type: 'separator' },

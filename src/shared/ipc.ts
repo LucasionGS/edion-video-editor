@@ -217,7 +217,15 @@ export interface AppSettings {
   snapping: Record<string, number | boolean> | null
   /** How positions are displayed: 'time' | 'timecode' | 'frames'. */
   timeDisplay: string
+  /** Named effect stacks saved by the user (core `Effect` objects). */
+  effectPresets: EffectPreset[]
   recents: RecentProject[]
+}
+
+export interface EffectPreset {
+  name: string
+  /** Core `Effect`s; plain JSON here so the IPC contract does not depend on the core. */
+  effects: Array<{ type: string; enabled: boolean; params: Record<string, unknown>; resource?: string }>
 }
 
 export interface ProjectFile {

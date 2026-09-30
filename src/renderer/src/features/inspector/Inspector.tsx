@@ -47,6 +47,8 @@ import { edit, select, useEditor } from '@/store/editor'
 import { editClips } from '@/store/clipEdits'
 import { insertHoldAtPlayhead, normalizeLoudness } from '@/store/commands'
 import { toast } from '@/store/feedback'
+import { deleteEffectPreset, presetEffects, usePresets } from '@/store/presets'
+import { openContextMenu } from '@/ui/ContextMenu'
 import { AudioEffectsSection, MixerSection, PanRow } from './AudioSections'
 import { MarkersSection } from './MarkersSection'
 import { Button } from '@/ui/Button'
@@ -726,6 +728,7 @@ function ShapeSection({ clip }: { clip: Extract<Clip, { type: 'shape' }> }) {
 
 function EffectsSection({ clip }: { clip: VisualClip | AdjustmentClip }) {
   const [adding, setAdding] = useState(false)
+  const presets = usePresets((s) => s.effects)
   const change = (label: string, fn: (c: VisualClip | AdjustmentClip) => void): void =>
     editClips([clip.id], label, (c) => hasEffects(c) && fn(c))
   return (
@@ -764,6 +767,36 @@ function EffectsSection({ clip }: { clip: VisualClip | AdjustmentClip }) {
             </button>
           ))}
         </div>
+      )}
+      {adding && presets.length > 0 && (
+        <>
+          <p className="mt-1 text-2xs text-faint">Presets (right-click to delete)</p>
+          <div className="mb-1 grid grid-cols-2 gap-1">
+            {presets.map((preset) => (
+              <button
+                key={preset.name}
+                className="h-7 truncate rounded-md border border-dashed border-line bg-raised px-1 text-xs text-muted hover:border-accent hover:text-fg"
+                title={preset.name}
+                onClick={() => {
+                  setAdding(false)
+                  change(`Apply “${preset.name}”`, (c) => void c.effects.push(...presetEffects(preset)))
+                }}
+                onContextMenu={(e) =>
+                  openContextMenu(e, [
+                    {
+                      label: `Delete “${preset.name}”`,
+                      icon: <Trash2 size={13} />,
+                      danger: true,
+                      onSelect: () => void deleteEffectPreset(preset.name)
+                    }
+                  ])
+                }
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
+        </>
       )}
       {clip.effects.length === 0 && !adding && (
         <p className="text-2xs text-faint">No effects. Use + to add colour, blur, keying and more.</p>

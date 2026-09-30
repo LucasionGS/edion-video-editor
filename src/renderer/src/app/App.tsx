@@ -6,6 +6,8 @@ import { SettingsDialog } from '@/features/settings/SettingsDialog'
 import { Welcome } from '@/features/welcome/Welcome'
 import { RemoveSilenceDialog } from '@/features/tools/RemoveSilenceDialog'
 import { useDialogs } from '@/store/dialogs'
+import { loadPresets } from '@/store/presets'
+import { PromptDialog } from '@/ui/PromptDialog'
 import { Library } from '@/features/library/Library'
 import { Timeline } from '@/features/timeline/Timeline'
 import { Viewer } from '@/features/viewer/Viewer'
@@ -29,6 +31,7 @@ export function App() {
   useAutosave()
   useEffect(wireExports, [])
   useEffect(() => void loadSnapSettings(), [])
+  useEffect(() => void loadPresets(), [])
   useEffect(() => {
     void window.edion.project.initialPath().then((path) => {
       if (path) void openProject(path)
@@ -111,5 +114,6 @@ function useCloseGuard(): void {
 function DialogHost() {
   const open = useDialogs((s) => s.open)
   if (open?.kind === 'removeSilence') return <RemoveSilenceDialog clipId={open.clipId} />
+  if (open?.kind === 'prompt') return <PromptDialog key={open.title} {...open} />
   return null
 }

@@ -2,9 +2,22 @@ import { create } from 'zustand'
 import type { Id } from '@core/index'
 
 /** Dialogs opened from menus and commands; the App renders whichever one is open. */
-export type DialogRequest = { kind: 'removeSilence'; clipId: Id }
+export type DialogRequest =
+  | { kind: 'removeSilence'; clipId: Id }
+  | {
+      kind: 'prompt'
+      title: string
+      label: string
+      initial: string
+      confirmLabel: string
+      onSubmit: (value: string) => void
+    }
 
 export const useDialogs = create<{ open: DialogRequest | null }>(() => ({ open: null }))
 
 export const openDialog = (request: DialogRequest): void => useDialogs.setState({ open: request })
 export const closeDialog = (): void => useDialogs.setState({ open: null })
+
+/** Asks for a line of text (a name, usually). */
+export const promptText = (request: Omit<Extract<DialogRequest, { kind: 'prompt' }>, 'kind'>): void =>
+  openDialog({ kind: 'prompt', ...request })

@@ -11,6 +11,7 @@ const DEFAULTS: AppSettings = {
   shortcuts: {},
   snapping: null,
   timeDisplay: 'time',
+  effectPresets: [],
   recents: []
 }
 const MAX_RECENTS = 12
