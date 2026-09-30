@@ -8,10 +8,15 @@ import {
   projectDuration,
   ProjectFormatError,
   serializeProject,
-  relinkPaths
+  relinkPaths,
+  detachAudio,
+  findClip,
+  findMedia,
+  linkedPartners,
+  swapMedia
 } from '@core/index'
 import type { Id, MediaAsset, Project } from '@core/index'
-import type { ImportedMedia } from '@shared/ipc'
+import type { DeriveKind, ImportedMedia } from '@shared/ipc'
 import { benefitsFromProxy, requestProxy } from '@/engine/proxies'
 import { edit, isDirty, loadProject, markSaved, select, useEditor } from './editor'
 import { confirm, toast } from './feedback'
@@ -225,5 +230,44 @@ export async function collectMedia(): Promise<void> {
     )
   } catch (error) {
     toast(`Copying failed: ${error instanceof Error ? error.message : String(error)}`, 'error')
+  }
+}
+
+/**
+ * Replaces a clip's media with a processed copy: stabilised video, or sound with less noise. Noise
+ * reduction works on sound, so a video clip that still carries its own sound gets it detached first.
+ */
+export async function processClip(clipId: Id, kind: DeriveKind, strength = 50): Promise<void> {
+  const { project, path } = get()
+  const clip = findClip(project, clipId)?.clip
+  if (!clip || !('mediaId' in clip)) return
+  let targetId: Id | null = clipId
+  if (kind === 'denoise' && clip.type === 'video') {
+    if (clip.audioMuted) {
+      targetId =
+        linkedPartners(project, clipId).find((c) => c.type === 'audio' && c.mediaId === clip.mediaId)?.id ??
+        null
+      if (!targetId) return toast('This clip has no sound to clean up.', 'error')
+    } else edit('Detach audio', (draft) => void (targetId = detachAudio(draft, clipId)))
+  }
+  const media = findMedia(get().project, clip.mediaId)
+  if (!media || !targetId) return
+  toast(kind === 'stabilize' ? 'Stabilizing in the background; this can take a while…' : 'Reducing noise…')
+  try {
+    const output = await window.edion.library.derive(media.path, kind, strength, path)
+    const [asset] = await importMedia([output])
+    if (!asset) return
+    edit(
+      kind === 'stabilize' ? 'Stabilize clip' : 'Reduce noise',
+      (draft) => void swapMedia(draft, [targetId!], asset.id)
+    )
+    toast(kind === 'stabilize' ? 'Clip stabilized.' : 'Noise reduced.', 'success')
+  } catch (error) {
+    toast(
+      error instanceof Error
+        ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+        : String(error),
+      'error'
+    )
   }
 }

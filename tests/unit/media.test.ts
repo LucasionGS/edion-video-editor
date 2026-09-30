@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addMedia, mediaUsage, relinkPaths, removeUnusedMedia } from '@core/index'
+import { addMedia, mediaUsage, relinkPaths, removeUnusedMedia, swapMedia } from '@core/index'
 import { projectWithClips, videoAsset } from './helpers'
 
 describe('media bookkeeping', () => {
@@ -18,5 +18,17 @@ describe('media bookkeeping', () => {
     const { project } = projectWithClips([0, 10])
     expect(relinkPaths(project, { '/tmp/clip.mp4': '/archive/clip.mp4', '/other': '/x' })).toBe(1)
     expect(project.media[0]!.path).toBe('/archive/clip.mp4')
+  })
+
+  it('swaps clips onto a compatible asset only', () => {
+    const { project, clips } = projectWithClips([0, 10])
+    const copy = videoAsset()
+    const sound = { ...videoAsset(), kind: 'audio' as const }
+    addMedia(project, copy)
+    addMedia(project, sound)
+    expect(swapMedia(project, [clips[0]!.id], sound.id)).toBe(0)
+    expect(swapMedia(project, [clips[0]!.id], copy.id)).toBe(1)
+    expect(clips[0]!.mediaId).toBe(copy.id)
+    expect(swapMedia(project, [clips[0]!.id], 'missing')).toBe(0)
   })
 })

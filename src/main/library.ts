@@ -10,6 +10,7 @@ import {
   type Filmstrip,
   type ImportedMedia,
   type MediaProbe,
+  type DeriveKind,
   type Peaks,
   type ProxyMode
 } from '@shared/ipc'
@@ -306,6 +307,18 @@ export function registerLibraryIpc(): void {
   })
   ipcMain.handle(LIBRARY_IPC.peaks, (_e, path: string) => once(peakJobs, path, () => buildPeaks(path)))
   ipcMain.handle(
+    LIBRARY_IPC.derive,
+    (_e, path: string, kind: DeriveKind, strength: number, projectPath: string | null) =>
+      once(deriveJobs, `${kind}:${strength}:${path}`, () => derive(path, kind, strength, projectPath)).then(
+        (output) => {
+          if (!output)
+            throw new Error(`Could not ${kind === 'stabilize' ? 'stabilize' : 'clean up'} the file.`)
+          allowedFiles.add(resolve(output))
+          return output
+        }
+      )
+  )
+  ipcMain.handle(
     LIBRARY_IPC.silences,
     (_e, path: string, start: number, duration: number, thresholdDb: number, minSeconds: number) =>
       backgroundJobs.run(() => detectSilences(path, start, duration, thresholdDb, minSeconds))
@@ -376,4 +389,100 @@ async function collectFiles(paths: string[], folder: string): Promise<Record<str
     moved[path] = target
   }
   return moved
+}
+
+const deriveJobs = new Map<string, Promise<string | null>>()
+
+/**
+ * A processed copy of a whole media file, so it keeps the original's timing and clips can switch to it.
+ * Stabilisation is vid.stab's two passes (motion analysis, then smoothing with an automatic zoom to hide
+ * the moving edges); noise reduction is FFmpeg's FFT denoiser plus a rumble filter, saved losslessly.
+ */
+async function derive(
+  path: string,
+  kind: DeriveKind,
+  strength: number,
+  projectPath: string | null
+): Promise<string> {
+  const dir = projectPath
+    ? join(dirname(projectPath), 'Processed')
+    : join(app.getPath('userData'), 'processed')
+  await mkdir(dir, { recursive: true })
+  const stem = basename(path, extname(path))
+  const level = Math.round(Math.max(1, Math.min(100, strength)))
+  const output = join(
+    dir,
+    `${stem} (${kind === 'stabilize' ? 'stabilized' : 'denoised'} ${level}).${kind === 'stabilize' ? 'mp4' : 'flac'}`
+  )
+  if (await exists(output)) return output
+  const temp = `${output}.partial${extname(output)}`
+  if (kind === 'stabilize') {
+    const transforms = join(await cacheDirFor(path), `stabilize-${Date.now()}.trf`)
+    // vid.stab parses its options with ':' separators, so the path's own colons (Windows) must be escaped.
+    const trf = transforms.replace(/\\/g, '/').replace(/:/g, '\\:')
+    await backgroundJobs.run(() =>
+      runFfmpeg({
+        args: [
+          '-y',
+          '-i',
+          path,
+          '-vf',
+          `vidstabdetect=shakiness=6:accuracy=15:result='${trf}'`,
+          '-f',
+          'null',
+          '-'
+        ]
+      })
+    )
+    const smoothing = Math.round(5 + (level / 100) * 55)
+    await backgroundJobs.run(() =>
+      runFfmpeg({
+        args: [
+          '-y',
+          '-i',
+          path,
+          '-map',
+          '0:v:0',
+          '-map',
+          '0:a:0?',
+          '-vf',
+          `vidstabtransform=input='${trf}':smoothing=${smoothing}:optzoom=1:interpol=bicubic,unsharp=5:5:0.6:3:3:0.3,format=yuv420p`,
+          '-c:v',
+          'libx264',
+          '-preset',
+          'fast',
+          '-crf',
+          '14',
+          '-c:a',
+          'aac',
+          '-b:a',
+          '256k',
+          '-movflags',
+          '+faststart',
+          temp
+        ]
+      })
+    )
+    await rm(transforms, { force: true })
+  } else {
+    // nr: dB of reduction (6-30); nf: the noise floor it assumes.
+    const reduction = Math.round(6 + (level / 100) * 24)
+    await backgroundJobs.run(() =>
+      runFfmpeg({
+        args: [
+          '-y',
+          '-i',
+          path,
+          '-vn',
+          '-af',
+          `highpass=f=70,afftdn=nr=${reduction}:nf=-45:tn=1`,
+          '-c:a',
+          'flac',
+          temp
+        ]
+      })
+    )
+  }
+  await rename(temp, output)
+  return output
 }

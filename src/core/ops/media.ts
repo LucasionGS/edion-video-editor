@@ -31,3 +31,29 @@ export function relinkPaths(project: Project, moved: Readonly<Record<string, str
   }
   return count
 }
+
+/**
+ * Points clips at another asset of a compatible kind (e.g. a stabilised or denoised copy with the same
+ * timing). Returns how many clips changed.
+ */
+export function swapMedia(project: Project, clipIds: readonly Id[], mediaId: Id): number {
+  const media = project.media.find((m) => m.id === mediaId)
+  if (!media) return 0
+  let count = 0
+  for (const track of project.tracks) {
+    if (track.locked) continue
+    for (const clip of track.clips) {
+      if (!clipIds.includes(clip.id) || !('mediaId' in clip)) continue
+      const compatible =
+        clip.type === 'audio'
+          ? media.hasAudio
+          : clip.type === 'image'
+            ? media.kind === 'image'
+            : media.kind === 'video'
+      if (!compatible) continue
+      clip.mediaId = mediaId
+      count++
+    }
+  }
+  return count
+}

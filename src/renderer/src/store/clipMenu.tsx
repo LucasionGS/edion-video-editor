@@ -20,7 +20,9 @@ import {
   Scissors,
   SquareSplitHorizontal,
   Trash2,
-  Unlink
+  Unlink,
+  Vibrate,
+  Wind
 } from 'lucide-react'
 import {
   alignedPosition,
@@ -56,6 +58,7 @@ import {
   toggleLink
 } from './commands'
 import { openDialog } from './dialogs'
+import { processClip } from './projectActions'
 import { edit, select, useEditor } from './editor'
 
 const shortcut = (id: string): string | undefined => {
@@ -278,6 +281,17 @@ export function clipMenuItems(): MenuItem[] {
       icon: <AudioWaveform size={13} />,
       onSelect: () => openDialog({ kind: 'removeSilence', clipId: silenceTarget.id })
     })
+    items.push({
+      label: 'Reduce noise',
+      icon: <Wind size={13} />,
+      onSelect: () => void processClip(silenceTarget.id, 'denoise')
+    })
+    if (silenceTarget.type === 'video')
+      items.push({
+        label: 'Stabilize',
+        icon: <Vibrate size={13} />,
+        onSelect: () => void processClip(silenceTarget.id, 'stabilize')
+      })
   }
   if (holdTarget) {
     items.push({

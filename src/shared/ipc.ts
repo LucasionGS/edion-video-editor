@@ -292,6 +292,11 @@ export interface EdionMediaLibraryApi {
    * path for each file copied. Files already in the folder are left where they are.
    */
   collect(paths: string[], folder: string): Promise<Record<string, string>>
+  /**
+   * Writes a processed copy of a media file with the same timing (next to the project, or in app data
+   * when unsaved) and returns its path. Reuses an existing copy made with the same settings.
+   */
+  derive(path: string, kind: DeriveKind, strength: number, projectPath: string | null): Promise<string>
   /** Pauses quieter than `thresholdDb` lasting at least `minSeconds`, as [start, end] source seconds. */
   silences(
     path: string,
@@ -309,6 +314,9 @@ export interface EdionMediaLibraryApi {
 }
 
 export type ProxyMode = 'preview' | 'full'
+
+/** Processed copies of media: video stabilisation, audio noise reduction. */
+export type DeriveKind = 'stabilize' | 'denoise'
 
 export interface EdionSettingsApi {
   get(): Promise<AppSettings>
@@ -341,7 +349,8 @@ export const LIBRARY_IPC = {
   clearCache: 'library:clearCache',
   loudness: 'library:loudness',
   collect: 'library:collect',
-  silences: 'library:silences'
+  silences: 'library:silences',
+  derive: 'library:derive'
 } as const
 
 export const SETTINGS_IPC = { get: 'settings:get', update: 'settings:update' } as const
