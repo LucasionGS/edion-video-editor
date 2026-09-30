@@ -1,6 +1,6 @@
 import type { AudioBufferSink } from 'mediabunny'
-import { gainAt } from '@core/index'
-import type { AudibleClip } from '@core/index'
+import { sourceGainAt } from '@core/index'
+import type { AudibleClip, AudioSource } from '@core/index'
 
 export interface ScheduleContext {
   context: BaseAudioContext
@@ -11,24 +11,34 @@ export interface ScheduleContext {
   contextOrigin: number
 }
 
+/** Gain automation points are this far apart (seconds), so curves (crossfades, keyframes) stay smooth. */
+const GAIN_STEP_SECONDS = 0.02
+
+/** Timeline seconds during which a source sounds: the clip plus any crossfade overhang. */
+export function sourceWindow(source: AudioSource, fps: number): [number, number] {
+  const { clip, crossIn, crossOut } = source
+  return [(clip.start - crossIn) / fps, (clip.start + clip.duration + crossOut) / fps]
+}
+
 /**
- * Places one decoded buffer of a clip's source audio on the context timeline, trimmed to the clip
- * and shaped by the clip's gain envelope. Shared by live playback and the offline export mix,
- * so they sound the same. Returns the node, or null when the buffer lies outside the clip.
+ * Places one decoded buffer of a source's audio on the context timeline, trimmed to the source's window
+ * and shaped by its gain envelope. Shared by live playback and the offline export mix, so they sound the
+ * same. Returns the node, or null when the buffer lies outside the window.
  */
 export function scheduleBuffer(
   sc: ScheduleContext,
-  clip: AudibleClip,
+  source: AudioSource,
   buffer: AudioBuffer,
   sourceTimestamp: number,
   /** Nothing is scheduled before this timeline second (the play/chunk start). */
   notBefore: number,
   notAfter = Infinity
 ): AudioBufferSourceNode | null {
+  const { clip } = source
   const clipStart = clip.start / sc.fps
-  const clipEnd = (clip.start + clip.duration) / sc.fps
-  const windowStart = Math.max(clipStart, notBefore)
-  const windowEnd = Math.min(clipEnd, notAfter)
+  const [windowFrom, windowTo] = sourceWindow(source, sc.fps)
+  const windowStart = Math.max(windowFrom, notBefore)
+  const windowEnd = Math.min(windowTo, notAfter)
 
   // Timeline span this buffer covers.
   const begin = clipStart + (sourceTimestamp - clip.sourceIn) / clip.speed
@@ -41,12 +51,14 @@ export function scheduleBuffer(
   node.buffer = buffer
   node.playbackRate.value = clip.speed
   const gain = sc.context.createGain()
-  const when = sc.contextOrigin + (from - sc.timelineOrigin)
-  const until = sc.contextOrigin + (to - sc.timelineOrigin)
-  gain.gain.setValueAtTime(gainAt(clip, from * sc.fps - clip.start), when)
-  gain.gain.linearRampToValueAtTime(gainAt(clip, to * sc.fps - clip.start), until)
+  const at = (timeline: number): number => sc.contextOrigin + (timeline - sc.timelineOrigin)
+  const level = (timeline: number): number => sourceGainAt(source, timeline * sc.fps - clip.start)
+  gain.gain.setValueAtTime(level(from), at(from))
+  for (let t = from + GAIN_STEP_SECONDS; t < to; t += GAIN_STEP_SECONDS)
+    gain.gain.linearRampToValueAtTime(level(t), at(t))
+  gain.gain.linearRampToValueAtTime(level(to), at(to))
   node.connect(gain).connect(sc.destination)
-  node.start(when, (from - begin) * clip.speed, (to - from) * clip.speed)
+  node.start(at(from), (from - begin) * clip.speed, (to - from) * clip.speed)
   node.onended = () => gain.disconnect()
   return node
 }

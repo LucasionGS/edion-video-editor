@@ -10,6 +10,9 @@ import { Row, scrub, Section } from './anim'
 export function TransitionInspector({ id }: { id: Id }) {
   const fps = useEditor((s) => s.project.settings.fps)
   const transition = useEditor((s) => s.project.tracks.flatMap((t) => t.transitions).find((t) => t.id === id))
+  const audio = useEditor(
+    (s) => s.project.tracks.find((t) => t.transitions.some((x) => x.id === id))?.kind === 'audio'
+  )
   if (!transition) return null
   const change = (label: string, fn: (t: Transition) => void): void =>
     edit(label, (draft) => {
@@ -19,16 +22,20 @@ export function TransitionInspector({ id }: { id: Id }) {
   return (
     <Section title="Transition">
       <Row label="Type">
-        <Select
-          value={transition.type}
-          onChange={(e) => change('Change transition', (t) => void (t.type = e.target.value))}
-        >
-          {TRANSITIONS.map((t) => (
-            <option key={t.type} value={t.type}>
-              {t.label}
-            </option>
-          ))}
-        </Select>
+        {audio ? (
+          <span className="text-xs">Crossfade (equal power)</span>
+        ) : (
+          <Select
+            value={transition.type}
+            onChange={(e) => change('Change transition', (t) => void (t.type = e.target.value))}
+          >
+            {TRANSITIONS.map((t) => (
+              <option key={t.type} value={t.type}>
+                {t.label}
+              </option>
+            ))}
+          </Select>
+        )}
       </Row>
       <Row label="Duration">
         <NumberInput

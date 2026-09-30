@@ -3,7 +3,7 @@ import { collectAudioSources, findMedia } from '@core/index'
 import type { AudioSource, Project } from '@core/index'
 import type { MediaPool } from '../decode/MediaPool'
 import { Mixer } from './mixer'
-import { clipAudio, scheduleBuffer, type ScheduleContext } from './schedule'
+import { clipAudio, scheduleBuffer, sourceWindow, type ScheduleContext } from './schedule'
 
 /** How far ahead of the playhead audio is decoded and queued. */
 const LOOKAHEAD_SECONDS = 1.5
@@ -53,8 +53,7 @@ export class AudioEngine {
       contextOrigin: this.contextOrigin
     }
     for (const source of collectAudioSources(project)) {
-      const end = (source.clip.start + source.clip.duration) / sc.fps
-      if (end > fromSeconds) void this.stream(project, source, sc, generation)
+      if (sourceWindow(source, sc.fps)[1] > fromSeconds) void this.stream(project, source, sc, generation)
     }
   }
 
@@ -79,17 +78,18 @@ export class AudioEngine {
     const { clip } = source
     const alive = (): boolean => generation === this.generation
     const clipStart = clip.start / sc.fps
+    // Includes the crossfade overhang of transitions on either side.
+    const [windowStart, windowEnd] = sourceWindow(source, sc.fps)
 
     // Far-away clips wait before opening a decoder.
-    while (alive() && clipStart - this.time > LOOKAHEAD_SECONDS * 2) await sleep(250)
+    while (alive() && windowStart - this.time > LOOKAHEAD_SECONDS * 2) await sleep(250)
     if (!alive()) return
 
     const media = findMedia(project, source.mediaId)
     const open = media && (await this.pool.open(media.path))
     if (!open?.audio || !open.audioDecodable || !alive()) return
 
-    const playFrom = Math.max(sc.timelineOrigin, clipStart)
-    const clipEnd = (clip.start + clip.duration) / sc.fps
+    const playFrom = Math.max(sc.timelineOrigin, windowStart)
     try {
       const sink = new AudioBufferSink(open.audio)
       for await (const { buffer, timestamp } of clipAudio(
@@ -97,14 +97,14 @@ export class AudioEngine {
         clip,
         sc.fps,
         playFrom,
-        clipEnd,
+        windowEnd,
         this.context
       )) {
         if (!alive()) return
         if (!this.mixer) return
         const node = scheduleBuffer(
           { ...sc, destination: this.mixer.input(source) },
-          clip,
+          source,
           buffer,
           timestamp,
           sc.timelineOrigin

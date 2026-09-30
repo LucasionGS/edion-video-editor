@@ -202,6 +202,12 @@ export interface AudioSource {
   clip: AudibleClip
   trackId: Id
   mediaId: Id
+  /**
+   * Frames the clip keeps sounding before its start and after its end: half of a transition on that cut,
+   * during which it crossfades with its neighbour.
+   */
+  crossIn: number
+  crossOut: number
 }
 
 /** Every clip that produces sound, honouring mute/solo. */
@@ -212,8 +218,16 @@ export function collectAudioSources(project: Project): AudioSource[] {
     if (track.muted || (anySolo && !track.solo)) continue
     for (const clip of track.clips) {
       if (!isAudibleClip(clip)) continue
-      if (clip.type === 'video' && clip.audioMuted) continue
-      sources.push({ clip, trackId: track.id, mediaId: clip.mediaId })
+      if (clip.type === 'video' && (clip.audioMuted || clip.hold)) continue
+      const into = track.transitions.find((t) => t.rightClipId === clip.id)
+      const out = track.transitions.find((t) => t.leftClipId === clip.id)
+      sources.push({
+        clip,
+        trackId: track.id,
+        mediaId: clip.mediaId,
+        crossIn: into ? into.duration / 2 : 0,
+        crossOut: out ? out.duration / 2 : 0
+      })
     }
   }
   return sources
@@ -225,5 +239,25 @@ export function gainAt(clip: AudibleClip, localFrame: number): number {
   if (clip.fadeIn > 0 && localFrame < clip.fadeIn) gain *= Math.max(0, localFrame / clip.fadeIn)
   const remaining = clip.duration - localFrame
   if (clip.fadeOut > 0 && remaining < clip.fadeOut) gain *= Math.max(0, remaining / clip.fadeOut)
+  return gain
+}
+
+/**
+ * Gain of a source at a clip-relative frame, including the equal-power crossfades of transitions:
+ * across a transition the outgoing clip follows cos and the incoming one sin, so the loudness stays even.
+ * Outside the clip (and its crossfade overhang) it is silent.
+ */
+export function sourceGainAt(source: AudioSource, localFrame: number): number {
+  const { clip, crossIn, crossOut } = source
+  if (localFrame < -crossIn || localFrame > clip.duration + crossOut) return 0
+  let gain = gainAt(clip, Math.max(0, Math.min(clip.duration, localFrame)))
+  if (crossIn > 0) {
+    const t = (localFrame + crossIn) / (2 * crossIn)
+    if (t < 1) gain *= Math.sin(Math.max(0, t) * (Math.PI / 2))
+  }
+  if (crossOut > 0) {
+    const t = (localFrame - (clip.duration - crossOut)) / (2 * crossOut)
+    if (t > 0) gain *= Math.cos(Math.min(1, t) * (Math.PI / 2))
+  }
   return gain
 }

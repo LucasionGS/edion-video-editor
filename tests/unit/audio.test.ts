@@ -5,6 +5,9 @@ import {
   collectAudioSources,
   normalizationGain,
   parseEbur128,
+  setTransition,
+  sourceGainAt,
+  detachAudio,
   upsertKeyframe
 } from '@core/index'
 import { projectWithClips } from './helpers'
@@ -65,5 +68,31 @@ describe('mixer data', () => {
   it('has defaults inside every parameter range', () => {
     for (const spec of AUDIO_EFFECTS)
       for (const p of Object.values(spec.params)) expect(p.default >= p.min && p.default <= p.max).toBe(true)
+  })
+})
+
+describe('crossfades', () => {
+  it('crossfades clips across a transition with equal power', () => {
+    const { project, clips } = projectWithClips([0, 60], [60, 60])
+    setTransition(project, clips[0]!.id, 'crossfade', 20)
+    const [left, right] = collectAudioSources(project)
+    expect([left!.crossIn, left!.crossOut, right!.crossIn, right!.crossOut]).toEqual([0, 10, 10, 0])
+    // Halfway through, both play at cos(45°) = sin(45°), summing to constant power.
+    expect(sourceGainAt(left!, 60)).toBeCloseTo(Math.SQRT1_2)
+    expect(sourceGainAt(right!, 0)).toBeCloseTo(Math.SQRT1_2)
+    expect(sourceGainAt(left!, 50)).toBeCloseTo(1)
+    expect(sourceGainAt(left!, 70)).toBeCloseTo(0)
+    expect(sourceGainAt(right!, -10)).toBeCloseTo(0)
+    expect(sourceGainAt(right!, -11)).toBe(0)
+    for (const f of [52, 57, 63, 68])
+      expect(sourceGainAt(left!, f) ** 2 + sourceGainAt(right!, f - 60) ** 2).toBeCloseTo(1)
+  })
+
+  it('lets audio clips take a crossfade, whatever type was asked for', () => {
+    const { project, clips } = projectWithClips([0, 60], [60, 60])
+    const audioIds = clips.map((c) => detachAudio(project, c.id)!)
+    const id = setTransition(project, audioIds[0]!, 'wipeLeft', 10)
+    const audioTrack = project.tracks.find((t) => t.kind === 'audio')!
+    expect(audioTrack.transitions.find((t) => t.id === id)?.type).toBe('crossfade')
   })
 })

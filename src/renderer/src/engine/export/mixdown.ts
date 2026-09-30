@@ -3,7 +3,7 @@ import { collectAudioSources, findMedia } from '@core/index'
 import type { Project } from '@core/index'
 import type { MediaPool } from '../decode/MediaPool'
 import { Mixer } from '../audio/mixer'
-import { clipAudio, scheduleBuffer } from '../audio/schedule'
+import { clipAudio, scheduleBuffer, sourceWindow } from '../audio/schedule'
 
 const CHUNK_SECONDS = 20
 
@@ -22,9 +22,10 @@ export async function mixdown(
   isAborted: () => boolean
 ): Promise<boolean> {
   const { fps, sampleRate } = project.settings
-  const sources = collectAudioSources(project).filter(
-    ({ clip }) => clip.start < toFrame && clip.start + clip.duration > fromFrame
-  )
+  const sources = collectAudioSources(project).filter((source) => {
+    const [from, to] = sourceWindow(source, fps)
+    return from * fps < toFrame && to * fps > fromFrame
+  })
   if (sources.length === 0) return false
 
   const rangeStart = fromFrame / fps
@@ -44,8 +45,7 @@ export async function mixdown(
     const mixer = new Mixer(context, project, context.destination)
     for (const source of sources) {
       const { clip, mediaId } = source
-      const clipStart = clip.start / fps
-      const clipEnd = (clip.start + clip.duration) / fps
+      const [clipStart, clipEnd] = sourceWindow(source, fps)
       if (clipStart >= chunkEnd || clipEnd <= chunkStart) continue
       const media = findMedia(project, mediaId)
       const open = media && (await pool.open(media.path))
@@ -56,7 +56,7 @@ export async function mixdown(
       for await (const { buffer, timestamp } of clipAudio(sink, clip, fps, from, to, context)) {
         scheduleBuffer(
           { ...sc, destination: mixer.input(source) },
-          clip,
+          source,
           buffer,
           timestamp,
           chunkStart,

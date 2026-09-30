@@ -3,6 +3,7 @@ import {
   AlignCenterVertical,
   AudioLines,
   AudioWaveform,
+  Blend,
   BetweenHorizontalStart,
   ClipboardPaste,
   Copy,
@@ -27,6 +28,7 @@ import {
 import {
   alignedPosition,
   closeAllGaps,
+  DEFAULT_TRANSITION_SECONDS,
   defaultTransform,
   detachAudio,
   evaluate,
@@ -36,6 +38,7 @@ import {
   isAudibleClip,
   isVisualClip,
   setReversed,
+  setTransition,
   setValueAt
 } from '@core/index'
 import type { HorizontalAlign, Id, Project, VerticalAlign, VisualClip } from '@core/index'
@@ -274,6 +277,26 @@ export function clipMenuItems(): MenuItem[] {
     })
   }
   const only = clips.length === 1 ? clips[0]! : undefined
+  const nextAudio =
+    only?.type === 'audio'
+      ? project.tracks
+          .flatMap((t) => t.clips)
+          .find((c) => c.type === 'audio' && c.start === only.start + only.duration)
+      : undefined
+  if (
+    only &&
+    nextAudio &&
+    project.tracks.some((t) => t.clips.includes(only) && t.clips.includes(nextAudio))
+  ) {
+    items.push({
+      label: 'Crossfade into next clip',
+      icon: <Blend size={13} />,
+      onSelect: () => {
+        const frames = Math.max(2, Math.round(DEFAULT_TRANSITION_SECONDS * project.settings.fps))
+        edit('Add crossfade', (draft) => void setTransition(draft, only.id, 'crossfade', frames))
+      }
+    })
+  }
   const silenceTarget = only && 'sourceIn' in only && !(only.type === 'video' && only.hold) ? only : undefined
   if (silenceTarget) {
     items.push({

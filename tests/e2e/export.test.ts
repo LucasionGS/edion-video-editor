@@ -490,6 +490,53 @@ describe('audio mix', () => {
   })
 })
 
+/** Mean volume in dB of a stretch of a file's audio. */
+function volumeAt(path: string, start: number, duration: number): number {
+  const { stderr } = spawnSync(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-ss',
+      String(start),
+      '-t',
+      String(duration),
+      '-i',
+      path,
+      '-af',
+      'volumedetect',
+      '-f',
+      'null',
+      '-'
+    ],
+    { encoding: 'utf8' }
+  )
+  const value = stderr.match(/mean_volume:\s*(-?[\d.]+|-inf)/)?.[1]
+  return value === undefined || value === '-inf' ? -Infinity : Number(value)
+}
+
+describe('audio crossfade', () => {
+  it('lets the outgoing clip ring on and fade across the cut', () => {
+    const { project, clip } = baseProject()
+    clip.sourceIn = 1
+    clip.duration = 60
+    const silentRight = clipFromMedia(project.media[0]!, 60, FPS) as VideoClip
+    silentRight.duration = 60
+    silentRight.volume.value = 0
+    insertClip(project, project.tracks[0]!.id, silentRight)
+    const hard = exportProject(project, 'crossfade-off', 'wav')
+    expect(setTransition(project, clip.id, 'crossfade', 30)).not.toBeNull()
+    const soft = exportProject(project, 'crossfade-on', 'wav')
+    const full = volumeAt(hard, 0.5, 0.2)
+    // Without the transition the cut at 2 s is silent right after; with it, the tone rings on, fading.
+    expect(volumeAt(hard, 2.1, 0.1)).toBeLessThan(full - 40)
+    expect(volumeAt(soft, 2.1, 0.1)).toBeGreaterThan(full - 12)
+    expect(volumeAt(soft, 2.1, 0.1)).toBeLessThan(full - 1)
+    // 30 frames = 1 s, so the fade ends 0.5 s after the cut.
+    expect(volumeAt(soft, 2.55, 0.1)).toBeLessThan(full - 40)
+    expect(Math.abs(volumeAt(soft, 1.0, 0.2) - full)).toBeLessThan(0.5)
+  })
+})
+
 describe('formats', () => {
   /** One second of the test pattern with its tone. */
   function short(): Project {

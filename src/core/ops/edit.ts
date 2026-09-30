@@ -432,11 +432,14 @@ export function setTransition(project: Project, leftClipId: Id, type: string, du
   if (!found || found.track.locked) return null
   const { track, clip, index } = found
   const right = track.clips[index + 1]
-  if (!right || right.start !== clipEnd(clip) || !isVisualClip(clip) || !isVisualClip(right)) return null
+  if (!right || right.start !== clipEnd(clip)) return null
+  // Pictures dissolve into pictures; sound (on audio tracks) can only crossfade.
+  const audio = clip.type === 'audio' && right.type === 'audio'
+  if (!audio && !(isVisualClip(clip) && isVisualClip(right))) return null
   track.transitions = track.transitions.filter((t) => t.leftClipId !== clip.id)
   const transition = {
     id: newId(),
-    type,
+    type: audio ? 'crossfade' : type,
     duration: Math.max(2, duration - (duration % 2)),
     leftClipId: clip.id,
     rightClipId: right.id
