@@ -401,6 +401,30 @@ describe('compositing', () => {
     expect(spread(pixel(output, 10, 20, 700))).toBeGreaterThan(12)
   })
 
+  it('grades through a .cube LUT', () => {
+    const size = 9
+    const rows: string[] = []
+    for (let b = 0; b < size; b++)
+      for (let g = 0; g < size; g++)
+        for (let r = 0; r < size; r++)
+          rows.push([r, g, b].map((v) => (1 - v / (size - 1)).toFixed(6)).join(' '))
+    const lutPath = join(workDir, 'invert.cube')
+    writeFileSync(lutPath, `LUT_3D_SIZE ${size}\n${rows.join('\n')}\n`)
+    const { project, clip } = baseProject()
+    clip.duration = 10
+    clip.effects.push({ ...effect('lut', { intensity: 1 }), resource: lutPath })
+    const output = exportProject(project, 'lut')
+    for (const [x, y] of [
+      [100, 100],
+      [700, 400],
+      [1100, 650]
+    ] as const) {
+      const source = pixel(fixture, 5, x, y)
+      const graded = pixel(output, 5, x, y)
+      source.forEach((v, i) => expect(Math.abs(graded[i]! - (255 - v))).toBeLessThan(12))
+    }
+  })
+
   it('renders every effect without shader errors', () => {
     const { project, clip } = baseProject()
     clip.duration = 10

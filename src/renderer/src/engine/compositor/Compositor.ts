@@ -1,5 +1,5 @@
 import { effectSpec, TRANSITIONS } from '@core/index'
-import type { CaptionClip, Id, Layer, ResolvedEffect, Scene, SceneNode } from '@core/index'
+import type { CaptionClip, Id, Layer, Lut3D, ResolvedEffect, Scene, SceneNode } from '@core/index'
 import { compileProgram, createTexture } from './gl'
 import { rasterizeShape, rasterizeText, type Raster } from './raster'
 import {
@@ -17,6 +17,8 @@ import {
 export interface FrameSource {
   videoFrame(layer: Layer): VideoFrame | null
   image(mediaId: Id): ImageBitmap | null
+  /** A parsed `.cube` file, or null while it loads (the effect is skipped until then). */
+  lut(path: string): Lut3D | null
 }
 
 interface Target {
@@ -65,6 +67,7 @@ export class Compositor {
   private readonly layerTextures = new Map<Id, CachedTexture>()
   private readonly imageTextures = new Map<Id, CachedTexture>()
   private readonly rasterTextures = new Map<string, CachedTexture>()
+  private readonly lutTextures = new Map<string, CachedTexture>()
   /** Clips whose upload failed, so the error is logged once instead of every frame. */
   private readonly failedClips = new Set<Id>()
 
@@ -128,6 +131,7 @@ export class Compositor {
     this.layerTextures.clear()
     this.imageTextures.clear()
     this.rasterTextures.clear()
+    this.lutTextures.clear()
     this.width = 0
     this.height = 0
   }
@@ -296,7 +300,7 @@ export class Compositor {
       gl.deleteFramebuffer(target.framebuffer)
       gl.deleteTexture(target.texture)
     }
-    for (const cache of [this.layerTextures, this.imageTextures, this.rasterTextures]) {
+    for (const cache of [this.layerTextures, this.imageTextures, this.rasterTextures, this.lutTextures]) {
       for (const cached of cache.values()) gl.deleteTexture(cached.texture)
     }
     this.forgetResources()
@@ -409,6 +413,21 @@ export class Compositor {
           pass('shadowCombine', {}, (pr) => this.texture(pr, 'u_shadow', 1, fxA.texture))
           break
         }
+        case 'lut': {
+          const lut = effect.resource ? source.lut(effect.resource) : null
+          if (!lut) break
+          const texture = this.lutTexture(effect.resource!, lut)
+          pass('lut', { intensity: p['intensity'] ?? 1 }, (pr) => {
+            gl.activeTexture(gl.TEXTURE1)
+            gl.bindTexture(gl.TEXTURE_3D, texture)
+            gl.uniform1i(pr.uniforms.get('u_lut')!, 1)
+            gl.activeTexture(gl.TEXTURE0)
+            gl.uniform1f(pr.uniforms.get('u_lutSize')!, lut.size)
+            gl.uniform3f(pr.uniforms.get('u_domainMin')!, ...lut.domainMin)
+            gl.uniform3f(pr.uniforms.get('u_domainMax')!, ...lut.domainMax)
+          })
+          break
+        }
         default: {
           const spec = effectSpec(effect.type)
           const params = { ...p }
@@ -420,8 +439,34 @@ export class Compositor {
         }
       }
     }
-    void source
     return read
+  }
+
+  /** The 3D texture of a LUT, uploaded once per file (and again if the file's contents change). */
+  private lutTexture(path: string, lut: Lut3D): WebGLTexture {
+    const cached = this.lutTextures.get(path)
+    if (cached && cached.stamp === lut) return cached.texture
+    const { gl } = this
+    const texture = cached?.texture ?? gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_3D, texture)
+    // 3D uploads refuse the premultiply flag the 2D uploads use.
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGB16F, lut.size, lut.size, lut.size, 0, gl.RGB, gl.FLOAT, lut.data)
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
+    for (const wrap of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R])
+      gl.texParameteri(gl.TEXTURE_3D, wrap, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    this.lutTextures.set(path, {
+      texture,
+      width: lut.size,
+      height: lut.size,
+      lastUsed: this.tick,
+      stamp: lut
+    })
+    return texture
   }
 
   /** Column-major matrix taking layer UV (0..1, y down) to clip space. */

@@ -1,9 +1,10 @@
 import { evaluateScene, findMedia, layersOf } from '@core/index'
-import type { Id, Layer, Project, Scene } from '@core/index'
+import type { Id, Layer, Lut3D, Project, Scene } from '@core/index'
 import type { EdionApi } from '@shared/ipc'
 import { Compositor, type FrameSource } from './compositor/Compositor'
 import { ClipVideoDecoder } from './decode/ClipVideoDecoder'
 import { ImageStore } from './decode/ImageStore'
+import { LutStore } from './decode/LutStore'
 import { MediaPool, type ProxyProvider } from './decode/MediaPool'
 
 /** The slice of the preload API the engine needs; both the editor and the export window provide it. */
@@ -29,6 +30,7 @@ export class SceneRenderer implements FrameSource {
   readonly compositor: Compositor
   readonly pool: MediaPool
   private readonly images: ImageStore
+  private readonly luts: LutStore
   private readonly slots = new Map<Id, DecoderSlot>()
   private project: Project | null = null
   private tick = 0
@@ -40,6 +42,7 @@ export class SceneRenderer implements FrameSource {
     this.compositor.onRestored = () => this.onContentReady?.()
     this.pool = new MediaPool(api.media, api.proxies)
     this.images = new ImageStore(api.media, () => this.onContentReady?.())
+    this.luts = new LutStore(api.media, () => this.onContentReady?.())
   }
 
   // FrameSource
@@ -49,6 +52,9 @@ export class SceneRenderer implements FrameSource {
   image(mediaId: Id): ImageBitmap | null {
     const media = this.project && findMedia(this.project, mediaId)
     return media ? this.images.get(media.path) : null
+  }
+  lut(path: string): Lut3D | null {
+    return this.luts.get(path)
   }
 
   /** Preview: request frames, draw what is available now. Missing frames trigger `onContentReady` later. */
@@ -65,6 +71,15 @@ export class SceneRenderer implements FrameSource {
   /** Export: waits until every layer has exactly the right frame. */
   async drawExact(project: Project, frame: number): Promise<Scene> {
     const scene = this.prepare(project, frame)
+    const resources = scene.nodes.flatMap((node) =>
+      node.kind === 'transition' ? [] : node.effects.flatMap((e) => e.resource ?? [])
+    )
+    const transitionResources = scene.nodes.flatMap((node) =>
+      node.kind === 'transition'
+        ? [node.from, node.to].flatMap((l) => l.effects.flatMap((e) => e.resource ?? []))
+        : []
+    )
+    await Promise.all([...resources, ...transitionResources].map((path) => this.luts.load(path)))
     await Promise.all(
       scene.nodes.flatMap(layersOf).map(async (layer) => {
         if (layer.clip.type === 'video')

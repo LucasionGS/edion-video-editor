@@ -17,6 +17,8 @@ export interface EffectSpec {
   type: string
   label: string
   params: Record<string, ParamSpec>
+  /** The effect reads a file (kept in `Effect.resource`). */
+  resource?: { label: string; extensions: string[] }
 }
 
 const unit = (label: string, def = 0): ParamSpec => ({ label, min: -1, max: 1, step: 0.01, default: def })
@@ -141,6 +143,12 @@ export const EFFECTS: readonly EffectSpec[] = [
       blur: px('Softness', 12, 100),
       opacity: amount('Opacity', 0.6)
     }
+  },
+  {
+    type: 'lut',
+    label: 'LUT (.cube)',
+    params: { intensity: amount('Intensity') },
+    resource: { label: 'LUT file', extensions: ['cube'] }
   },
   { type: 'chromaticAberration', label: 'Chromatic aberration', params: { amount: px('Amount', 4, 30) } },
   { type: 'grain', label: 'Film grain', params: { amount: amount('Amount', 0.25), size: px('Size', 1.5, 6) } }

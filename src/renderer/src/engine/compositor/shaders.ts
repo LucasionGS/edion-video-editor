@@ -281,6 +281,18 @@ void main() {
   if (invert > 0.5) m = 1.0 - m;
   o_color = c * m;
 }`,
+  // Trilinear lookup in a 3D texture; coordinates land on texel centres so the table's corners are exact.
+  lut: `${EFFECT_HEADER}
+precision highp sampler3D;
+uniform sampler3D u_lut;
+uniform float intensity, u_lutSize;
+uniform vec3 u_domainMin, u_domainMax;
+void main() {
+  vec4 c = unpremultiply(texture(u_tex, v_uv));
+  vec3 t = clamp((c.rgb - u_domainMin) / max(u_domainMax - u_domainMin, vec3(1e-6)), 0.0, 1.0);
+  vec3 graded = texture(u_lut, t * (u_lutSize - 1.0) / u_lutSize + 0.5 / u_lutSize).rgb;
+  o_color = premultiply(vec4(mix(c.rgb, clamp(graded, 0.0, 1.0), intensity), c.a));
+}`,
   glowExtract: `${EFFECT_HEADER}
 uniform float threshold;
 void main() {

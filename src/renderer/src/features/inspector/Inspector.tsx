@@ -27,6 +27,7 @@ import {
   isAudibleClip,
   isVisualClip,
   newId,
+  parseCube,
   setClipSpeed,
   setReversed
 } from '@core/index'
@@ -34,6 +35,7 @@ import type { AdjustmentClip, AnimationPreset, BlendMode, Clip, TextStyle, Visua
 import { edit, select, useEditor } from '@/store/editor'
 import { editClips } from '@/store/clipEdits'
 import { insertHoldAtPlayhead, normalizeLoudness } from '@/store/commands'
+import { toast } from '@/store/feedback'
 import { AudioEffectsSection, MixerSection, PanRow } from './AudioSections'
 import { Button } from '@/ui/Button'
 import { ColorInput } from '@/ui/ColorInput'
@@ -661,8 +663,10 @@ function EffectsSection({ clip }: { clip: VisualClip | AdjustmentClip }) {
             <button
               key={spec.type}
               className="h-7 rounded-md border border-line bg-raised text-xs text-muted hover:border-accent hover:text-fg"
-              onClick={() => {
+              onClick={async () => {
                 setAdding(false)
+                const resource = spec.resource ? await chooseResource(spec.resource.extensions) : undefined
+                if (resource === null) return
                 change(
                   `Add ${spec.label}`,
                   (c) =>
@@ -670,7 +674,8 @@ function EffectsSection({ clip }: { clip: VisualClip | AdjustmentClip }) {
                       id: newId(),
                       type: spec.type,
                       enabled: true,
-                      params: defaultEffectParams(spec)
+                      params: defaultEffectParams(spec),
+                      ...(resource ? { resource } : {})
                     })
                 )
               }}
@@ -711,6 +716,24 @@ function EffectsSection({ clip }: { clip: VisualClip | AdjustmentClip }) {
               </IconButton>
             </header>
             <div className="flex flex-col gap-1">
+              {spec.resource && (
+                <Row label={spec.resource.label}>
+                  <button
+                    className="h-7 min-w-0 flex-1 truncate rounded-md border border-line bg-raised px-2 text-left text-xs text-muted hover:border-accent hover:text-fg"
+                    title={effect.resource ?? 'Choose a file'}
+                    onClick={async () => {
+                      const resource = await chooseResource(spec.resource!.extensions)
+                      if (resource)
+                        change('Change LUT', (c) => {
+                          const target = c.effects.find((e) => e.id === effect.id)
+                          if (target) target.resource = resource
+                        })
+                    }}
+                  >
+                    {effect.resource ? effect.resource.split(/[\\/]/).pop() : 'Choose…'}
+                  </button>
+                </Row>
+              )}
               {Object.entries(spec.params).map(([key, p]) =>
                 p.options ? (
                   <Row key={key} label={p.label}>
@@ -749,6 +772,22 @@ function EffectsSection({ clip }: { clip: VisualClip | AdjustmentClip }) {
       })}
     </Section>
   )
+}
+
+/**
+ * Asks for an effect's file (a .cube LUT) and checks it can be read. Returns its path, or null when the
+ * user cancelled or the file is unusable (after saying why).
+ */
+async function chooseResource(extensions: string[]): Promise<string | null> {
+  const file = await window.edion.dialog.openText(extensions)
+  if (!file) return null
+  try {
+    parseCube(file.content)
+    return file.path
+  } catch (error) {
+    toast(`Cannot use this LUT: ${error instanceof Error ? error.message : String(error)}`, 'error')
+    return null
+  }
 }
 
 function AnimateSection({ clip }: { clip: VisualClip }) {
