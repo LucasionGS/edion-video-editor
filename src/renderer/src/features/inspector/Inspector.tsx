@@ -492,7 +492,9 @@ function TextSection({ clip }: { clip: Extract<Clip, { type: 'text' | 'caption' 
               <option value="letters">Letter by letter</option>
               <option value="words">Word by word</option>
             </Select>
-            {clip.reveal && (
+          </Row>
+          {clip.reveal && (
+            <Row label="Duration">
               <NumberInput
                 label="Type-on duration"
                 value={clip.reveal.seconds}
@@ -501,7 +503,6 @@ function TextSection({ clip }: { clip: Extract<Clip, { type: 'text' | 'caption' 
                 step={0.1}
                 precision={1}
                 suffix=" s"
-                className="w-20 flex-none"
                 {...scrub}
                 onChange={(v) =>
                   editClips([clip.id], 'Change type-on', (c) => {
@@ -509,8 +510,8 @@ function TextSection({ clip }: { clip: Extract<Clip, { type: 'text' | 'caption' 
                   })
                 }
               />
-            )}
-          </Row>
+            </Row>
+          )}
         </>
       ) : (
         <CaptionStyle />
@@ -572,7 +573,9 @@ function CaptionStyle() {
           <option value="letters">Letter by letter</option>
           <option value="words">Word by word</option>
         </Select>
-        {animation?.reveal && (
+      </Row>
+      {animation?.reveal && (
+        <Row label="Duration">
           <NumberInput
             label="Caption type-on duration"
             value={animation.reveal.seconds}
@@ -581,14 +584,13 @@ function CaptionStyle() {
             step={0.1}
             precision={1}
             suffix=" s"
-            className="w-20 flex-none"
             {...scrub}
             onChange={(v) =>
               animate('Caption type-on', (a) => a.reveal && (a.reveal.seconds = Math.max(0.1, v)))
             }
           />
-        )}
-      </Row>
+        </Row>
+      )}
       <Row label="Fade">
         <NumberInput
           label="Caption fade"
