@@ -3,7 +3,7 @@ import { createTrack, newId } from '../model/factory'
 import type { AudioClip, Clip, Id, MediaAsset, Project, Track, TrackKind } from '../model/types'
 import { isAudibleClip, isVisualClip, trackKindFor } from '../model/types'
 import { linkedPartners, pruneLinks, relinkCopies } from './link'
-import { animatablesOf, clipEnd, findClip, findTrack, isFree, sourceHandles } from './query'
+import { animatablesOf, clipEnd, findClip, findTrack, isFree, isHold, sourceHandles } from './query'
 
 /**
  * Timeline edit operations. They mutate their `project` argument, so call them on an Immer draft
@@ -147,6 +147,30 @@ export function moveClips(project: Project, moves: readonly ClipMove[]): boolean
 
 // ── Trim / split ──────────────────────────────────────────────────────────────────────────────────
 
+/** Moves `sourceIn` by `frames` timeline frames' worth of source (frame holds keep theirs). */
+function shiftSource(project: Project, clip: Clip, frames: number): void {
+  if ('sourceIn' in clip && !isHold(clip))
+    clip.sourceIn = Math.max(0, clip.sourceIn + (frames / project.settings.fps) * clip.speed)
+}
+
+/**
+ * Removes `delta` frames from the start of a clip (negative adds them back), keeping the rest of its
+ * content where it is on the timeline. Does not move `start`; the caller decides where the clip goes.
+ */
+export function cutHead(project: Project, clip: Clip, delta: number): void {
+  // A reversed clip starts with its latest source, so its head is the end of the source range.
+  if (!('reversed' in clip && clip.reversed)) shiftSource(project, clip, delta)
+  clip.duration -= delta
+  // Keyframes are clip-relative; keep them at the same timeline position.
+  for (const anim of animatablesOf(clip)) shiftKeyframes(anim, -delta)
+}
+
+/** Removes `delta` frames from the end of a clip (negative adds them). */
+export function cutTail(project: Project, clip: Clip, delta: number): void {
+  if ('reversed' in clip && clip.reversed) shiftSource(project, clip, delta)
+  clip.duration -= delta
+}
+
 /** Frames the given edge of a clip can be trimmed to: bounded by neighbours, source media and a 1-frame minimum. */
 export function trimRange(project: Project, clipId: Id, edge: 'start' | 'end'): [number, number] | null {
   const found = findClip(project, clipId)
@@ -177,18 +201,13 @@ export function trimClip(project: Project, clipId: Id, edge: 'start' | 'end', fr
   const range = trimRange(project, clipId, edge)
   if (!found || !range || found.track.locked) return null
   const { clip, track } = found
-  const { fps } = project.settings
   const next = Math.max(range[0], Math.min(frame, range[1]))
   if (edge === 'start') {
-    const speed = 'speed' in clip ? clip.speed : 1
     const delta = next - clip.start
-    if ('sourceIn' in clip) clip.sourceIn = Math.max(0, clip.sourceIn + (delta / fps) * speed)
-    clip.duration -= delta
+    cutHead(project, clip, delta)
     clip.start = next
-    // Keyframes are clip-relative; keep them at the same timeline position.
-    for (const anim of animatablesOf(clip)) shiftKeyframes(anim, -delta)
   } else {
-    clip.duration = next - clip.start
+    cutTail(project, clip, clipEnd(clip) - next)
   }
   clampFades(clip)
   normalizeTrack(track)
@@ -262,7 +281,9 @@ function splitOne(project: Project, clipId: Id, frame: number): Id | null {
   right.duration = clip.duration - local
   clip.duration = local
 
-  if ('sourceIn' in right && 'speed' in right) right.sourceIn += (local / project.settings.fps) * right.speed
+  // The part played first comes from later source when reversed.
+  if ('reversed' in clip && clip.reversed) shiftSource(project, clip, right.duration)
+  else shiftSource(project, right, local)
   if (isVisualClip(right)) for (const effect of right.effects) effect.id = newId()
 
   const leftAnims = animatablesOf(clip)
@@ -353,7 +374,7 @@ export function setClipSpeed(project: Project, clipId: Id, speed: number): void 
 
 function setSpeedOne(project: Project, clipId: Id, speed: number): void {
   const found = findClip(project, clipId)
-  if (!found || found.track.locked || !('speed' in found.clip)) return
+  if (!found || found.track.locked || !('speed' in found.clip) || isHold(found.clip)) return
   const { clip, track, index } = found
   const next = Math.max(0.05, Math.min(speed, 100))
   const ratio = clip.speed / next
@@ -372,7 +393,7 @@ function setSpeedOne(project: Project, clipId: Id, speed: number): void {
 /** Moves a video clip's sound into its own audio clip. Returns the audio clip's id. */
 export function detachAudio(project: Project, clipId: Id): Id | null {
   const found = findClip(project, clipId)
-  if (!found || found.clip.type !== 'video' || found.clip.audioMuted) return null
+  if (!found || found.clip.type !== 'video' || found.clip.audioMuted || found.clip.hold) return null
   const video = found.clip
   const audio: AudioClip = {
     id: newId(),
@@ -383,6 +404,7 @@ export function detachAudio(project: Project, clipId: Id): Id | null {
     mediaId: video.mediaId,
     sourceIn: video.sourceIn,
     speed: video.speed,
+    ...(video.reversed ? { reversed: true } : {}),
     volume: JSON.parse(JSON.stringify(video.volume)) as AudioClip['volume'],
     fadeIn: video.fadeIn,
     fadeOut: video.fadeOut

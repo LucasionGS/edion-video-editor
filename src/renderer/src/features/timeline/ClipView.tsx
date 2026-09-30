@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { AudioLines, Captions, Film, ImageIcon, Link2, Shapes, Type } from 'lucide-react'
+import { AudioLines, Captions, Film, ImageIcon, Link2, Pause, Rewind, Shapes, Type } from 'lucide-react'
 import type { Clip } from '@core/index'
 import { clipMenuItems, selectForMenu } from '@/store/clipMenu'
 import { useEditor } from '@/store/editor'
@@ -91,6 +91,12 @@ export const ClipView = memo(function ClipView({
         {width > 28 && <Icon size={9} className="shrink-0 text-white/90" />}
         {width > 42 && clip.linkId && (
           <Link2 size={9} className="shrink-0 text-white/70" aria-label="Linked" />
+        )}
+        {width > 42 && 'reversed' in clip && clip.reversed && (
+          <Rewind size={9} className="shrink-0 text-white/70" aria-label="Reversed" />
+        )}
+        {width > 42 && clip.type === 'video' && clip.hold && (
+          <Pause size={9} className="shrink-0 text-white/70" aria-label="Frame hold" />
         )}
         {width > 56 && (
           <span className="truncate text-[10px] leading-none font-medium text-white/95">

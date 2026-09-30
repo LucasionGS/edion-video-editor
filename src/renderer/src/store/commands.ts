@@ -5,6 +5,7 @@ import {
   deleteClips,
   findClip,
   insertClipAuto,
+  insertFrameHold,
   linkClips,
   pasteClips,
   removeTransition,
@@ -57,6 +58,18 @@ export function rippleTrimToPlayhead(edge: 'start' | 'end'): void {
     }
   })
   if (jumpTo !== null) useEditor.setState({ playhead: jumpTo })
+}
+
+/** Seconds a newly inserted frame hold lasts. */
+export const FRAME_HOLD_SECONDS = 2
+
+/** Inserts a frame hold at the playhead into a video clip and selects it. */
+export function insertHoldAtPlayhead(clipId: Id): void {
+  const { playhead, project } = state()
+  const frames = Math.max(1, Math.round(FRAME_HOLD_SECONDS * project.settings.fps))
+  let id: Id | null = null
+  edit('Insert frame hold', (draft) => void (id = insertFrameHold(draft, clipId, playhead, frames)))
+  if (id) select([id])
 }
 
 /** Removes the empty space at `frame` on a track. */

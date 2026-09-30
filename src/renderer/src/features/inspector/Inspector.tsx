@@ -6,6 +6,7 @@ import {
   Eye,
   EyeOff,
   Italic,
+  Pause,
   Plus,
   RotateCcw,
   SlidersHorizontal,
@@ -23,14 +24,16 @@ import {
   isAudibleClip,
   isVisualClip,
   newId,
-  setClipSpeed
+  setClipSpeed,
+  setReversed
 } from '@core/index'
 import type { AnimationPreset, BlendMode, Clip, TextStyle, VisualClip } from '@core/index'
 import { edit, select, useEditor } from '@/store/editor'
 import { editClips } from '@/store/clipEdits'
+import { insertHoldAtPlayhead } from '@/store/commands'
 import { Button } from '@/ui/Button'
 import { ColorInput } from '@/ui/ColorInput'
-import { Select } from '@/ui/Field'
+import { Segmented, Select } from '@/ui/Field'
 import { IconButton } from '@/ui/IconButton'
 import { NumberInput } from '@/ui/NumberInput'
 import { EmptyState } from '@/ui/Panel'
@@ -201,6 +204,20 @@ function CropSection({ clip }: { clip: Extract<Clip, { type: 'video' | 'image' }
 }
 
 function SpeedSection({ clip }: { clip: Extract<Clip, { type: 'video' | 'audio' }> }) {
+  const playhead = useEditor((s) => s.playhead)
+  const fps = useEditor((s) => s.project.settings.fps)
+  if (clip.type === 'video' && clip.hold) {
+    return (
+      <Section title="Frame hold">
+        <p className="text-2xs text-faint">
+          Shows one frame for {(clip.duration / fps).toFixed(2)} s. Trim it to change the length; use the slip
+          tool to hold a different frame.
+        </p>
+      </Section>
+    )
+  }
+  const underPlayhead =
+    clip.type === 'video' && playhead >= clip.start && playhead < clip.start + clip.duration
   return (
     <Section title="Speed">
       <Row label="Speed">
@@ -216,6 +233,30 @@ function SpeedSection({ clip }: { clip: Extract<Clip, { type: 'video' | 'audio' 
           onChange={(v) => edit('Change speed', (d) => setClipSpeed(d, clip.id, v / 100))}
         />
       </Row>
+      <Row label="Direction">
+        <Segmented
+          value={clip.reversed ? 'reverse' : 'forward'}
+          options={[
+            { value: 'forward', label: 'Forward' },
+            { value: 'reverse', label: 'Reverse' }
+          ]}
+          onChange={(v) =>
+            edit(v === 'reverse' ? 'Reverse clip' : 'Play forward', (d) =>
+              setReversed(d, clip.id, v === 'reverse')
+            )
+          }
+        />
+      </Row>
+      {clip.type === 'video' && (
+        <Button
+          className="mt-1 self-start"
+          disabled={!underPlayhead}
+          title={underPlayhead ? undefined : 'Move the playhead over the clip first'}
+          onClick={() => insertHoldAtPlayhead(clip.id)}
+        >
+          <Pause size={13} /> Insert frame hold
+        </Button>
+      )}
       <p className="text-2xs text-faint">Changing speed also changes pitch.</p>
     </Section>
   )

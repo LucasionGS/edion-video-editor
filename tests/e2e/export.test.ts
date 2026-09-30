@@ -11,8 +11,10 @@ import {
   createShapeClip,
   insertClip,
   insertClipAuto,
+  insertFrameHold,
   newId,
   serializeProject,
+  setReversed,
   setTransition,
   splitClip
 } from '@core/index'
@@ -166,6 +168,30 @@ function psnr(a: string, b: string): number {
   return Number(stderr.match(/average:([\d.]+)/)?.[1] ?? 0)
 }
 
+/** PSNR between frame `frameA` of `a` and frame `frameB` of `b`. */
+function framePsnr(a: string, frameA: number, b: string, frameB: number): number {
+  const { stderr } = spawnSync(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-i',
+      a,
+      '-i',
+      b,
+      '-lavfi',
+      `[0:v]select=eq(n\\,${frameA}),setpts=0[a];[1:v]select=eq(n\\,${frameB}),setpts=0[b];[a][b]psnr`,
+      '-frames:v',
+      '1',
+      '-f',
+      'null',
+      '-'
+    ],
+    { encoding: 'utf8' }
+  )
+  const value = stderr.match(/average:([\d.]+|inf)/)?.[1]
+  return value === 'inf' ? Infinity : Number(value ?? 0)
+}
+
 beforeAll(() => {
   ensureFixture()
   workDir = mkdtempSync(join(tmpdir(), 'edion-e2e-'))
@@ -287,6 +313,34 @@ describe('export', () => {
     expect(Math.max(gr, gg, gb) - Math.min(gr, gg, gb)).toBeLessThan(12)
     const [cr, cg, cb] = pixel(output, 100, 900, 500)
     expect(Math.max(cr, cg, cb) - Math.min(cr, cg, cb)).toBeGreaterThan(12)
+  })
+})
+
+describe('time', () => {
+  it('plays reversed clips backwards, frame for frame', () => {
+    const { project, clip } = baseProject()
+    setReversed(project, clip.id, true)
+    const started = Date.now()
+    const output = exportProject(project, 'reversed')
+    console.log(`reversed export took ${Date.now() - started} ms`)
+    const last = SECONDS * FPS - 1
+    expect(Number(probe(output).video!['nb_read_frames'])).toBe(SECONDS * FPS)
+    for (const n of [0, 1, 40, 77, last]) expect(framePsnr(output, n, fixture, last - n)).toBeGreaterThan(35)
+    // Sanity check: the forward frame at the same index is different.
+    expect(framePsnr(output, 0, fixture, 0)).toBeLessThan(25)
+  })
+
+  it('holds a frame', () => {
+    const { project, clip } = baseProject()
+    clip.duration = 30
+    const holdId = insertFrameHold(project, clip.id, 10, 20)!
+    expect(holdId).toBeTruthy()
+    const output = exportProject(project, 'hold')
+    expect(Number(probe(output).video!['nb_read_frames'])).toBe(50)
+    for (const n of [10, 20, 29]) expect(framePsnr(output, n, fixture, 10)).toBeGreaterThan(35)
+    // After the hold the clip carries on where it stopped.
+    expect(framePsnr(output, 30, fixture, 10)).toBeGreaterThan(35)
+    expect(framePsnr(output, 35, fixture, 15)).toBeGreaterThan(35)
   })
 })
 

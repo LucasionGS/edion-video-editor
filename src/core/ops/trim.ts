@@ -1,8 +1,7 @@
-import { shiftKeyframes } from '../keyframes/animatable'
 import type { Clip, Id, Project, Track } from '../model/types'
-import { clampFades, normalizeTrack } from './edit'
+import { clampFades, cutHead, cutTail, normalizeTrack } from './edit'
 import { linkedPartners } from './link'
-import { animatablesOf, clipEnd, findClip, findTrack, sourceHandles } from './query'
+import { clipEnd, findClip, findTrack, isHold, sourceHandles, sourceSlack } from './query'
 
 /**
  * The editing tools beyond plain trimming: ripple, roll, slip and slide, plus closing gaps.
@@ -19,15 +18,6 @@ function handleFrames(project: Project, clip: Clip): { head: number; tail: numbe
   const frames = (seconds: number): number =>
     seconds === Infinity ? Infinity : Math.floor((seconds * project.settings.fps) / speed + EPSILON)
   return { head: frames(head), tail: frames(tail) }
-}
-
-/** Removes `delta` frames from the head of a clip (negative reveals more), leaving `start` alone. */
-function trimHead(project: Project, clip: Clip, delta: number): void {
-  if ('sourceIn' in clip) {
-    clip.sourceIn = Math.max(0, clip.sourceIn + (delta / project.settings.fps) * clip.speed)
-  }
-  clip.duration -= delta
-  for (const anim of animatablesOf(clip)) shiftKeyframes(anim, -delta)
 }
 
 interface Located {
@@ -92,8 +82,8 @@ export function rippleTrim(
   for (const { clip, track } of group) {
     const end = clipEnd(clip)
     for (const other of track.clips) if (other !== clip && other.start >= end) other.start += shift
-    if (edge === 'end') clip.duration += delta
-    else trimHead(project, clip, delta)
+    if (edge === 'end') cutTail(project, clip, -delta)
+    else cutHead(project, clip, delta)
     clampFades(clip)
     normalizeTrack(track)
   }
@@ -124,8 +114,8 @@ export function rollEdit(project: Project, clipId: Id, frame: number, linked = t
   const delta = clamp(frame - cut, min, max)
   if (delta === 0) return cut
   for (const { left, right, track } of pairs) {
-    left.duration += delta
-    trimHead(project, right, delta)
+    cutTail(project, left, -delta)
+    cutHead(project, right, delta)
     right.start += delta
     clampFades(left)
     clampFades(right)
@@ -138,7 +128,7 @@ export function rollEdit(project: Project, clipId: Id, frame: number, linked = t
 
 /**
  * Shows a different part of the source without moving or resizing the clip: positive `delta` frames
- * start the clip later in its source. Returns the delta actually applied (limited by the source length).
+ * use later source (for a frame hold: hold a later frame). Returns the delta actually applied (limited by the source length).
  */
 export function slipClip(project: Project, clipId: Id, delta: number, linked = true): number {
   const group = groupOf(
@@ -148,18 +138,21 @@ export function slipClip(project: Project, clipId: Id, delta: number, linked = t
     (p, c) => p.start === c.start && p.duration === c.duration
   )?.filter(({ clip }) => 'sourceIn' in clip)
   if (!group || group.length === 0 || group[0]!.clip.id !== clipId) return 0
+  const { fps } = project.settings
   let min = -Infinity
   let max = Infinity
   for (const { clip } of group) {
-    const handles = handleFrames(project, clip)
-    min = Math.max(min, -handles.head)
-    max = Math.min(max, handles.tail)
+    if (!('sourceIn' in clip)) continue
+    const { before, after } = sourceSlack(project, clip)
+    const speed = isHold(clip) ? 1 : clip.speed
+    min = Math.max(min, -Math.floor((before * fps) / speed + EPSILON))
+    max = Math.min(max, Math.floor((after * fps) / speed + EPSILON))
   }
   const applied = clamp(delta, min, max)
   if (applied === 0) return 0
   for (const { clip } of group) {
     if ('sourceIn' in clip)
-      clip.sourceIn = Math.max(0, clip.sourceIn + (applied / project.settings.fps) * clip.speed)
+      clip.sourceIn = Math.max(0, clip.sourceIn + (applied / fps) * (isHold(clip) ? 1 : clip.speed))
   }
   return applied
 }
@@ -203,11 +196,11 @@ export function slideClip(project: Project, clipId: Id, delta: number, linked = 
   for (const { clip, track, previous, next } of plans) {
     clip.start += applied
     if (previous) {
-      previous.duration += applied
+      cutTail(project, previous, -applied)
       clampFades(previous)
     }
     if (next) {
-      trimHead(project, next, applied)
+      cutHead(project, next, applied)
       next.start += applied
       clampFades(next)
     }

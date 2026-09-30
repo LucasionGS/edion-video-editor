@@ -13,7 +13,7 @@ import type {
   VisualClip
 } from '../model/types'
 import { isAudibleClip, isVisualClip } from '../model/types'
-import { clipEnd, findMedia } from '../ops/query'
+import { clipEnd, findMedia, sourceTimeAt } from '../ops/query'
 
 /**
  * Turns (project, frame) into a flat, fully resolved description of what to draw.
@@ -103,7 +103,7 @@ function resolveLayer(project: Project, clip: VisualClip, frame: number): Layer 
   }
   if (clip.type === 'video') {
     const media = findMedia(project, clip.mediaId)
-    const time = clip.sourceIn + (localFrame / project.settings.fps) * clip.speed
+    const time = sourceTimeAt(clip, localFrame, project.settings.fps)
     // Inside a transition a clip plays past its edges; hold the first/last frame when the source runs out.
     const lastFrameTime = Math.max(0, (media?.duration ?? 0) - 1 / (media?.fps ?? project.settings.fps))
     layer.sourceTime = Math.max(0, Math.min(time, lastFrameTime))

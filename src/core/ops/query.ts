@@ -69,13 +69,38 @@ export function nearestFreeStart(
   return candidates.reduce((best, c) => (Math.abs(c - desired) < Math.abs(best - desired) ? c : best))
 }
 
-/** Source media seconds still available before the clip's in point and after its out point. */
-export function sourceHandles(project: Project, clip: Clip): { head: number; tail: number } {
-  if (clip.type !== 'video' && clip.type !== 'audio') return { head: Infinity, tail: Infinity }
+export type TimedClip = Extract<Clip, { sourceIn: number }>
+
+export const isHold = (clip: Clip): boolean => clip.type === 'video' && clip.hold === true
+
+/** Seconds of source a clip plays (0 for a frame hold). */
+export const sourceSpan = (clip: TimedClip, fps: number): number =>
+  isHold(clip) ? 0 : (clip.duration / fps) * clip.speed
+
+/** Source time shown (or heard) at a clip-relative frame. */
+export function sourceTimeAt(clip: TimedClip, localFrame: number, fps: number): number {
+  if (isHold(clip)) return clip.sourceIn
+  const frame = clip.reversed ? clip.duration - 1 - localFrame : localFrame
+  return clip.sourceIn + (frame / fps) * clip.speed
+}
+
+/** Unused source seconds before `sourceIn` and after the used range, in source order. */
+export function sourceSlack(project: Project, clip: TimedClip): { before: number; after: number } {
   const media = findMedia(project, clip.mediaId)
-  if (!media) return { head: 0, tail: 0 }
-  const used = (clip.duration / project.settings.fps) * clip.speed
-  return { head: clip.sourceIn, tail: Math.max(0, media.duration - clip.sourceIn - used) }
+  if (!media) return { before: 0, after: 0 }
+  const used = isHold(clip) ? 1 / (media.fps ?? project.settings.fps) : sourceSpan(clip, project.settings.fps)
+  return { before: clip.sourceIn, after: Math.max(0, media.duration - clip.sourceIn - used) }
+}
+
+/**
+ * Source seconds by which a clip can grow at its start (`head`) and its end (`tail`) on the timeline.
+ * A reversed clip grows at its start into later source; a frame hold can grow without limit.
+ */
+export function sourceHandles(project: Project, clip: Clip): { head: number; tail: number } {
+  if ((clip.type !== 'video' && clip.type !== 'audio') || isHold(clip))
+    return { head: Infinity, tail: Infinity }
+  const { before, after } = sourceSlack(project, clip)
+  return clip.reversed ? { head: after, tail: before } : { head: before, tail: after }
 }
 
 /** Every animatable property of a clip, for operations that must touch all of them (trim, split). */

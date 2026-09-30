@@ -2,7 +2,7 @@ import { AudioBufferSink } from 'mediabunny'
 import { collectAudioSources, findMedia } from '@core/index'
 import type { Project } from '@core/index'
 import type { MediaPool } from '../decode/MediaPool'
-import { scheduleBuffer } from '../audio/schedule'
+import { clipAudio, scheduleBuffer } from '../audio/schedule'
 
 const CHUNK_SECONDS = 20
 
@@ -47,12 +47,10 @@ export async function mixdown(
       const media = findMedia(project, mediaId)
       const open = media && (await pool.open(media.path))
       if (!open?.audio || !open.audioDecodable) continue
-      const sourceFrom = clip.sourceIn + (Math.max(chunkStart, clipStart) - clipStart) * clip.speed
-      const sourceTo = clip.sourceIn + (Math.min(chunkEnd, clipEnd) - clipStart) * clip.speed
-      for await (const { buffer, timestamp } of new AudioBufferSink(open.audio).buffers(
-        sourceFrom,
-        sourceTo
-      )) {
+      const sink = new AudioBufferSink(open.audio)
+      const from = Math.max(chunkStart, clipStart)
+      const to = Math.min(chunkEnd, clipEnd)
+      for await (const { buffer, timestamp } of clipAudio(sink, clip, fps, from, to, context)) {
         scheduleBuffer(sc, clip, buffer, timestamp, chunkStart, chunkEnd)
       }
     }

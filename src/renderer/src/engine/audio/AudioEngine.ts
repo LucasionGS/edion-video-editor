@@ -2,7 +2,7 @@ import { AudioBufferSink } from 'mediabunny'
 import { collectAudioSources, findMedia } from '@core/index'
 import type { AudioSource, Project } from '@core/index'
 import type { MediaPool } from '../decode/MediaPool'
-import { scheduleBuffer, type ScheduleContext } from './schedule'
+import { clipAudio, scheduleBuffer, type ScheduleContext } from './schedule'
 
 /** How far ahead of the playhead audio is decoded and queued. */
 const LOOKAHEAD_SECONDS = 1.5
@@ -84,12 +84,16 @@ export class AudioEngine {
     if (!open?.audio || !open.audioDecodable || !alive()) return
 
     const playFrom = Math.max(sc.timelineOrigin, clipStart)
-    const sourceFrom = clip.sourceIn + (playFrom - clipStart) * clip.speed
-    const sourceTo = clip.sourceIn + (clip.duration / sc.fps) * clip.speed
+    const clipEnd = (clip.start + clip.duration) / sc.fps
     try {
-      for await (const { buffer, timestamp } of new AudioBufferSink(open.audio).buffers(
-        sourceFrom,
-        sourceTo
+      const sink = new AudioBufferSink(open.audio)
+      for await (const { buffer, timestamp } of clipAudio(
+        sink,
+        clip,
+        sc.fps,
+        playFrom,
+        clipEnd,
+        this.context
       )) {
         if (!alive()) return
         const node = scheduleBuffer(sc, clip, buffer, timestamp, sc.timelineOrigin)

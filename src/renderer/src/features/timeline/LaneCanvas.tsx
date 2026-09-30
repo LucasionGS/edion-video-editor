@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { clipEnd, findMedia } from '@core/index'
+import { clipEnd, findMedia, sourceTimeAt } from '@core/index'
 import type { Clip, Project, Track } from '@core/index'
 import { useEditor } from '@/store/editor'
 import { getFilmstrip, getPeaks, getStill, HEADER_WIDTH, useTimelineView } from './view'
@@ -9,7 +9,7 @@ const WAVE_COLOR = 'rgba(255,255,255,0.55)'
 function drawWaveform(
   ctx: CanvasRenderingContext2D,
   project: Project,
-  clip: Clip & { mediaId: string; sourceIn: number; speed: number },
+  clip: Clip & { mediaId: string; sourceIn: number; speed: number; reversed?: boolean },
   x0: number,
   x1: number,
   clipX: number,
@@ -23,8 +23,11 @@ function drawWaveform(
   const secondsPerPixel = clip.speed / (zoom * project.settings.fps)
   const mid = top + height / 2
   ctx.fillStyle = WAVE_COLOR
+  const width = (clip.duration * zoom) | 0
   for (let x = Math.floor(x0); x < x1; x++) {
-    const from = clip.sourceIn + (x - clipX) * secondsPerPixel
+    // Reversed clips draw their waveform mirrored, like they sound.
+    const offset = clip.reversed ? width - (x - clipX) - 1 : x - clipX
+    const from = clip.sourceIn + offset * secondsPerPixel
     const a = Math.max(0, Math.floor(from * peaks.perSecond))
     const b = Math.min(
       peaks.data.length,
@@ -52,12 +55,11 @@ function drawFilmstrip(
   const strip = media && media.kind === 'video' ? getFilmstrip(media.path) : null
   if (!strip) return
   const tileWidth = (height * strip.tileWidth) / strip.tileHeight
-  const sourceIn = 'sourceIn' in clip ? clip.sourceIn : 0
-  const speed = 'speed' in clip ? clip.speed : 1
   const first = Math.max(0, Math.floor((x0 - clipX) / tileWidth))
   for (let i = first; clipX + i * tileWidth < x1; i++) {
     const x = clipX + i * tileWidth
-    const time = sourceIn + ((i * tileWidth) / zoom / project.settings.fps) * speed
+    const local = Math.min(clip.duration - 1, Math.floor((i * tileWidth) / zoom))
+    const time = 'sourceIn' in clip ? sourceTimeAt(clip, local, project.settings.fps) : 0
     const index = Math.max(0, Math.min(strip.count - 1, Math.round(time / strip.interval)))
     ctx.drawImage(
       strip.image,

@@ -87,7 +87,9 @@ const timed = {
   mediaId: id,
   /** Offset into the source, in seconds. */
   sourceIn: z.number().min(0),
-  speed: z.number().positive()
+  speed: z.number().positive(),
+  /** Plays its source range backwards. `sourceIn` still marks the earliest source time used. */
+  reversed: z.boolean().optional()
 }
 const audible = {
   volume: animNumberSchema,
@@ -104,7 +106,9 @@ export const videoClipSchema = z.object({
   type: z.literal('video'),
   crop: cropSchema,
   /** True once the audio was detached into its own clip (or the source has none). */
-  audioMuted: z.boolean()
+  audioMuted: z.boolean(),
+  /** A frame hold: shows the source frame at `sourceIn` for the whole clip, silently. */
+  hold: z.boolean().optional()
 })
 export const audioClipSchema = z.object({ ...clipBase, ...timed, ...audible, type: z.literal('audio') })
 export const imageClipSchema = z.object({

@@ -11,6 +11,8 @@ import {
   Link2,
   Maximize,
   Move,
+  Pause,
+  Rewind,
   RotateCcw,
   Scaling,
   Scissors,
@@ -28,6 +30,7 @@ import {
   frameScale,
   gapAt,
   isVisualClip,
+  setReversed,
   setValueAt
 } from '@core/index'
 import type { HorizontalAlign, Id, Project, VerticalAlign, VisualClip } from '@core/index'
@@ -38,6 +41,8 @@ import { editClips, localFrame } from './clipEdits'
 import {
   closeGapAt,
   copySelection,
+  FRAME_HOLD_SECONDS,
+  insertHoldAtPlayhead,
   cutSelection,
   deleteSelection,
   duplicateSelection,
@@ -233,6 +238,31 @@ export function clipMenuItems(): MenuItem[] {
           )
       }
     )
+  }
+  const timed = clips.filter(
+    (c): c is Extract<typeof c, { sourceIn: number }> => 'sourceIn' in c && !(c.type === 'video' && c.hold)
+  )
+  const holdTarget = clips.length === 1 && clips[0]!.type === 'video' && !clips[0]!.hold && underPlayhead
+  if (timed.length > 0) {
+    const reverse = !timed.every((c) => c.reversed)
+    items.push(
+      { type: 'separator' },
+      {
+        label: reverse ? 'Reverse' : 'Play forward',
+        icon: <Rewind size={13} />,
+        onSelect: () =>
+          edit(reverse ? 'Reverse clip' : 'Play forward', (draft) =>
+            timed.forEach((c) => setReversed(draft, c.id, reverse))
+          )
+      }
+    )
+  }
+  if (holdTarget) {
+    items.push({
+      label: `Insert frame hold (${FRAME_HOLD_SECONDS} s)`,
+      icon: <Pause size={13} />,
+      onSelect: () => insertHoldAtPlayhead(clips[0]!.id)
+    })
   }
   const linkId = clips[0]!.linkId
   const oneGroup = linkId !== undefined && clips.every((c) => c.linkId === linkId)
