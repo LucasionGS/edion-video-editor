@@ -2,6 +2,7 @@ import { AudioBufferSink } from 'mediabunny'
 import { collectAudioSources, findMedia } from '@core/index'
 import type { AudioSource, Project } from '@core/index'
 import type { MediaPool } from '../decode/MediaPool'
+import { Mixer } from './mixer'
 import { clipAudio, scheduleBuffer, type ScheduleContext } from './schedule'
 
 /** How far ahead of the playhead audio is decoded and queued. */
@@ -17,6 +18,7 @@ export class AudioEngine {
   private readonly master: GainNode
   private generation = 0
   private nodes = new Set<AudioBufferSourceNode>()
+  private mixer: Mixer | null = null
   private timelineOrigin = 0
   private contextOrigin = 0
 
@@ -42,6 +44,7 @@ export class AudioEngine {
     const generation = this.generation
     this.timelineOrigin = fromSeconds
     this.contextOrigin = this.context.currentTime + START_DELAY_SECONDS
+    this.mixer = new Mixer(this.context, project, this.master)
     const sc: ScheduleContext = {
       context: this.context,
       destination: this.master,
@@ -63,6 +66,8 @@ export class AudioEngine {
       node.disconnect()
     }
     this.nodes.clear()
+    this.mixer?.dispose()
+    this.mixer = null
   }
 
   private async stream(
@@ -96,7 +101,14 @@ export class AudioEngine {
         this.context
       )) {
         if (!alive()) return
-        const node = scheduleBuffer(sc, clip, buffer, timestamp, sc.timelineOrigin)
+        if (!this.mixer) return
+        const node = scheduleBuffer(
+          { ...sc, destination: this.mixer.input(source) },
+          clip,
+          buffer,
+          timestamp,
+          sc.timelineOrigin
+        )
         if (node) {
           this.nodes.add(node)
           node.addEventListener('ended', () => this.nodes.delete(node))

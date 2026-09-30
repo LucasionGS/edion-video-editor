@@ -287,6 +287,12 @@ export interface EdionMediaLibraryApi {
   saveRecording(data: Uint8Array, projectPath: string | null): Promise<string>
   cacheSize(): Promise<number>
   clearCache(): Promise<void>
+  /** EBU R128 loudness of `duration` seconds from `start`, or null when it cannot be measured. */
+  loudness(
+    path: string,
+    start: number,
+    duration: number
+  ): Promise<{ integrated: number; peak: number } | null>
 }
 
 export type ProxyMode = 'preview' | 'full'
@@ -319,7 +325,8 @@ export const LIBRARY_IPC = {
   proxy: 'library:proxy',
   saveRecording: 'library:saveRecording',
   cacheSize: 'library:cacheSize',
-  clearCache: 'library:clearCache'
+  clearCache: 'library:clearCache',
+  loudness: 'library:loudness'
 } as const
 
 export const SETTINGS_IPC = { get: 'settings:get', update: 'settings:update' } as const

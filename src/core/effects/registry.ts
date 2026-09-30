@@ -92,3 +92,46 @@ export const TRANSITIONS: readonly TransitionSpec[] = [
 ]
 
 export const DEFAULT_TRANSITION_SECONDS = 0.5
+
+/**
+ * Audio effects. Each maps onto Web Audio nodes (see the engine's mixer), which run the same in live
+ * playback and in the offline export mix. Parameters are static (the value at the clip start).
+ */
+export const AUDIO_EFFECTS: readonly EffectSpec[] = [
+  {
+    type: 'eq',
+    label: 'Equalizer',
+    params: {
+      low: { label: 'Low (120 Hz)', min: -24, max: 24, step: 0.5, default: 0, unit: ' dB' },
+      mid: { label: 'Mid (1 kHz)', min: -24, max: 24, step: 0.5, default: 0, unit: ' dB' },
+      high: { label: 'High (8 kHz)', min: -24, max: 24, step: 0.5, default: 0, unit: ' dB' }
+    }
+  },
+  {
+    type: 'highpass',
+    label: 'High-pass (cut rumble)',
+    params: { frequency: { label: 'Cutoff', min: 20, max: 2000, step: 5, default: 80, unit: ' Hz' } }
+  },
+  {
+    type: 'lowpass',
+    label: 'Low-pass (cut hiss)',
+    params: { frequency: { label: 'Cutoff', min: 500, max: 20000, step: 50, default: 8000, unit: ' Hz' } }
+  },
+  {
+    type: 'compressor',
+    label: 'Compressor',
+    params: {
+      threshold: { label: 'Threshold', min: -60, max: 0, step: 1, default: -24, unit: ' dB' },
+      ratio: { label: 'Ratio', min: 1, max: 20, step: 0.5, default: 4, unit: ':1' },
+      makeup: { label: 'Makeup gain', min: 0, max: 24, step: 0.5, default: 6, unit: ' dB' }
+    }
+  }
+]
+
+export const audioEffectSpec = (type: string): EffectSpec | undefined =>
+  AUDIO_EFFECTS.find((e) => e.type === type)
+
+/** A new effect of a registry type with every parameter at its default. */
+export function defaultEffectParams(spec: EffectSpec): Record<string, { value: number }> {
+  return Object.fromEntries(Object.entries(spec.params).map(([key, p]) => [key, { value: p.default }]))
+}

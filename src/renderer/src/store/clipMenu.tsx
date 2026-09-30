@@ -8,6 +8,7 @@ import {
   CopyPlus,
   FlipHorizontal2,
   FlipVertical2,
+  Gauge,
   Link2,
   Maximize,
   Move,
@@ -29,6 +30,7 @@ import {
   findClip,
   frameScale,
   gapAt,
+  isAudibleClip,
   isVisualClip,
   setReversed,
   setValueAt
@@ -43,6 +45,7 @@ import {
   copySelection,
   FRAME_HOLD_SECONDS,
   insertHoldAtPlayhead,
+  normalizeLoudness,
   cutSelection,
   deleteSelection,
   duplicateSelection,
@@ -256,6 +259,14 @@ export function clipMenuItems(): MenuItem[] {
           )
       }
     )
+  }
+  const audible = clips.filter((c) => isAudibleClip(c) && !(c.type === 'video' && (c.audioMuted || c.hold)))
+  if (audible.length > 0) {
+    items.push({
+      label: 'Normalize loudness',
+      icon: <Gauge size={13} />,
+      onSelect: () => void normalizeLoudness(audible.map((c) => c.id))
+    })
   }
   if (holdTarget) {
     items.push({

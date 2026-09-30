@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, resolve, sep } from 'node:path'
@@ -12,7 +13,9 @@ import {
   type Peaks,
   type ProxyMode
 } from '@shared/ipc'
+import { parseEbur128, type Loudness } from '@core/audio/loudness'
 import { backgroundJobs, runFfmpeg } from './ffmpeg/jobs'
+import { resolveFfmpeg } from './ffmpeg/paths'
 import { probe } from './ffmpeg/probe'
 import { writeFileAtomic } from './settings'
 
@@ -301,4 +304,41 @@ export function registerLibraryIpc(): void {
     for (const jobs of [filmstripJobs, peakJobs, proxyJobs]) jobs.clear()
   })
   ipcMain.handle(LIBRARY_IPC.peaks, (_e, path: string) => once(peakJobs, path, () => buildPeaks(path)))
+  ipcMain.handle(LIBRARY_IPC.loudness, (_e, path: string, start: number, duration: number) =>
+    backgroundJobs.run(() => measureLoudness(path, start, duration))
+  )
+}
+
+/** Runs FFmpeg's EBU R128 meter over part of a file. Its report goes to the log, hence the log level. */
+async function measureLoudness(path: string, start: number, duration: number): Promise<Loudness | null> {
+  const { ffmpegPath } = await resolveFfmpeg()
+  const args = [
+    '-hide_banner',
+    '-nostats',
+    '-nostdin',
+    '-loglevel',
+    'info',
+    '-ss',
+    String(Math.max(0, start))
+  ]
+  args.push(
+    '-t',
+    String(Math.max(0.05, duration)),
+    '-i',
+    path,
+    '-vn',
+    '-af',
+    'ebur128=peak=true',
+    '-f',
+    'null',
+    '-'
+  )
+  const log = await new Promise<string>((resolvePromise) => {
+    const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    let output = ''
+    child.stderr.on('data', (d: Buffer) => (output = (output + d.toString()).slice(-8000)))
+    child.once('error', () => resolvePromise(''))
+    child.once('close', () => resolvePromise(output))
+  })
+  return parseEbur128(log)
 }

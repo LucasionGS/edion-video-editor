@@ -5,6 +5,7 @@ import {
   AlignRight,
   Eye,
   EyeOff,
+  Gauge,
   Italic,
   Pause,
   Plus,
@@ -30,7 +31,8 @@ import {
 import type { AnimationPreset, BlendMode, Clip, TextStyle, VisualClip } from '@core/index'
 import { edit, select, useEditor } from '@/store/editor'
 import { editClips } from '@/store/clipEdits'
-import { insertHoldAtPlayhead } from '@/store/commands'
+import { insertHoldAtPlayhead, normalizeLoudness } from '@/store/commands'
+import { AudioEffectsSection, MixerSection, PanRow } from './AudioSections'
 import { Button } from '@/ui/Button'
 import { ColorInput } from '@/ui/ColorInput'
 import { Segmented, Select } from '@/ui/Field'
@@ -53,7 +55,13 @@ export function Inspector() {
   )
 
   if (selectedTransition) return <TransitionInspector id={selectedTransition} />
-  if (selection.length === 0) return <ProjectSettings />
+  if (selection.length === 0)
+    return (
+      <>
+        <ProjectSettings />
+        <MixerSection />
+      </>
+    )
   if (!clip) {
     return (
       <EmptyState
@@ -71,7 +79,12 @@ export function Inspector() {
       {isVisualClip(clip) && <TransformSection clip={clip} />}
       {(clip.type === 'video' || clip.type === 'image') && <CropSection clip={clip} />}
       {(clip.type === 'video' || clip.type === 'audio') && <SpeedSection clip={clip} />}
-      {isAudibleClip(clip) && !(clip.type === 'video' && clip.audioMuted) && <AudioSection clip={clip} />}
+      {isAudibleClip(clip) && !(clip.type === 'video' && (clip.audioMuted || clip.hold)) && (
+        <>
+          <AudioSection clip={clip} />
+          <AudioEffectsSection clip={clip} />
+        </>
+      )}
       {isVisualClip(clip) && <AnimateSection clip={clip} />}
       {isVisualClip(clip) && <EffectsSection clip={clip} />}
     </div>
@@ -291,6 +304,20 @@ function AudioSection({ clip }: { clip: Extract<Clip, { type: 'video' | 'audio' 
       />
       {fade('fadeIn', 'Fade in')}
       {fade('fadeOut', 'Fade out')}
+      <PanRow
+        label="Clip pan"
+        value={clip.pan ?? 0}
+        onChange={(pan) =>
+          editClips([clip.id], 'Change pan', (c) => {
+            if (!isAudibleClip(c)) return
+            if (pan === 0) delete c.pan
+            else c.pan = pan
+          })
+        }
+      />
+      <Button className="mt-1 self-start" onClick={() => void normalizeLoudness([clip.id])}>
+        <Gauge size={13} /> Normalize loudness
+      </Button>
       {clip.type === 'video' && (
         <Button
           className="mt-1 self-start"

@@ -95,7 +95,11 @@ const audible = {
   volume: animNumberSchema,
   /** Audio fades, in frames. */
   fadeIn: frames.min(0),
-  fadeOut: frames.min(0)
+  fadeOut: frames.min(0),
+  /** Stereo balance, -1 (left) … 1 (right). */
+  pan: z.number().min(-1).max(1).optional(),
+  /** Filters and dynamics, applied in order (see AUDIO_EFFECTS). */
+  audioEffects: z.array(effectSchema).optional()
 }
 
 export const videoClipSchema = z.object({
@@ -169,7 +173,11 @@ export const trackSchema = z.object({
   solo: z.boolean(),
   hidden: z.boolean(),
   locked: z.boolean(),
-  height: z.number()
+  height: z.number(),
+  /** Linear gain for everything on the track (1 = unchanged). */
+  volume: z.number().min(0).optional(),
+  /** Stereo balance of the whole track, -1 … 1. */
+  pan: z.number().min(-1).max(1).optional()
 })
 
 export const mediaAssetSchema = z.object({

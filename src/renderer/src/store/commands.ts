@@ -1,15 +1,20 @@
 import {
+  applyGain,
   clipAtFrame,
   closeGap,
   DEFAULT_TRANSITION_SECONDS,
   deleteClips,
   findClip,
+  findMedia,
+  isAudibleClip,
+  normalizationGain,
   insertClipAuto,
   insertFrameHold,
   linkClips,
   pasteClips,
   removeTransition,
   rippleTrim,
+  sourceSpan,
   setTransition,
   splitClip,
   unlinkClips,
@@ -17,6 +22,7 @@ import {
 } from '@core/index'
 import type { Clip, Id, ProjectSettings } from '@core/index'
 import { edit, editTargets, select, selectTransition, useEditor } from './editor'
+import { toast } from './feedback'
 
 /** User-level commands shared by buttons, menus and keyboard shortcuts. */
 
@@ -211,4 +217,33 @@ export function applyTransition(type: string): boolean {
   edit('Add transition', (draft) => void (id = setTransition(draft, best.leftId, type, frames)))
   if (id) selectTransition(id)
   return id !== null
+}
+
+/**
+ * Measures the loudness of each clip's sound (EBU R128, through FFmpeg) and sets its volume so it lands
+ * at about -14 LUFS without clipping.
+ */
+export async function normalizeLoudness(ids: readonly Id[]): Promise<void> {
+  const { project } = state()
+  const results: Array<{ id: Id; gain: number }> = []
+  for (const id of ids) {
+    const clip = findClip(project, id)?.clip
+    if (!clip || !isAudibleClip(clip) || (clip.type === 'video' && (clip.audioMuted || clip.hold))) continue
+    const media = findMedia(project, clip.mediaId)
+    if (!media) continue
+    const loudness = await window.edion.library.loudness(
+      media.path,
+      clip.sourceIn,
+      sourceSpan(clip, project.settings.fps)
+    )
+    if (loudness) results.push({ id, gain: normalizationGain(loudness) })
+  }
+  if (results.length === 0) return toast('There is no sound to measure in the selection.', 'error')
+  edit('Normalize loudness', (draft) => results.forEach(({ id, gain }) => applyGain(draft, id, gain)))
+  const db = (gain: number): string => `${gain >= 1 ? '+' : ''}${(20 * Math.log10(gain)).toFixed(1)} dB`
+  toast(
+    results.length === 1
+      ? `Loudness normalized (${db(results[0]!.gain)}).`
+      : `Normalized ${results.length} clips.`
+  )
 }

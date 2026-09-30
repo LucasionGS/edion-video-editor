@@ -68,7 +68,8 @@ const api: EdionApi = {
     proxy: (path, mode) => ipcRenderer.invoke(LIBRARY_IPC.proxy, path, mode),
     saveRecording: (data, projectPath) => ipcRenderer.invoke(LIBRARY_IPC.saveRecording, data, projectPath),
     cacheSize: () => ipcRenderer.invoke(LIBRARY_IPC.cacheSize),
-    clearCache: () => ipcRenderer.invoke(LIBRARY_IPC.clearCache)
+    clearCache: () => ipcRenderer.invoke(LIBRARY_IPC.clearCache),
+    loudness: (path, start, duration) => ipcRenderer.invoke(LIBRARY_IPC.loudness, path, start, duration)
   },
   settings: {
     get: () => ipcRenderer.invoke(SETTINGS_IPC.get),

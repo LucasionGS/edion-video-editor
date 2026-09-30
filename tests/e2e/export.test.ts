@@ -344,6 +344,44 @@ describe('time', () => {
   })
 })
 
+/** Mean volume in dB of one channel (0 = left, 1 = right) of a file's audio. */
+function channelVolume(path: string, channel: 0 | 1): number {
+  const { stderr } = spawnSync(
+    'ffmpeg',
+    ['-hide_banner', '-i', path, '-af', `pan=mono|c0=c${channel},volumedetect`, '-f', 'null', '-'],
+    { encoding: 'utf8' }
+  )
+  const value = stderr.match(/mean_volume:\s*(-?[\d.]+|-inf)/)?.[1]
+  return value === undefined || value === '-inf' ? -Infinity : Number(value)
+}
+
+describe('audio mix', () => {
+  it('pans, applies track volume and filters like the preview', () => {
+    const plain = exportProject(baseProject().project, 'mix-plain', 'wav')
+    const reference = channelVolume(plain, 0)
+    expect(Math.abs(channelVolume(plain, 1) - reference)).toBeLessThan(0.5)
+
+    const panned = baseProject()
+    panned.clip.pan = -1
+    const left = exportProject(panned.project, 'mix-pan', 'wav')
+    expect(channelVolume(left, 0)).toBeGreaterThan(reference - 1)
+    expect(channelVolume(left, 1)).toBeLessThan(reference - 40)
+
+    const quieter = baseProject()
+    quieter.project.tracks[0]!.volume = 0.5
+    expect(channelVolume(exportProject(quieter.project, 'mix-track', 'wav'), 0)).toBeCloseTo(reference - 6, 0)
+
+    // A 2 kHz high-pass all but removes the 440 Hz test tone.
+    const filtered = baseProject()
+    filtered.clip.audioEffects = [
+      { id: newId(), type: 'highpass', enabled: true, params: { frequency: { value: 2000 } } }
+    ]
+    expect(channelVolume(exportProject(filtered.project, 'mix-filter', 'wav'), 0)).toBeLessThan(
+      reference - 20
+    )
+  })
+})
+
 describe('formats', () => {
   /** One second of the test pattern with its tone. */
   function short(): Project {
