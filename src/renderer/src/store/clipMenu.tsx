@@ -395,9 +395,13 @@ export function clipMenuItems(): MenuItem[] {
     })
     if (silenceTarget.type === 'video')
       items.push({
+        type: 'submenu',
         label: 'Split at scene changes',
         icon: <Clapperboard size={13} />,
-        onSelect: () => void splitAtScenes(silenceTarget.id)
+        items: [
+          { label: 'Clear cuts', onSelect: () => void splitAtScenes(silenceTarget.id, 0.3) },
+          { label: 'Subtle cuts too', onSelect: () => void splitAtScenes(silenceTarget.id, 0.15) }
+        ]
       })
     if (silenceTarget.type === 'video')
       items.push({

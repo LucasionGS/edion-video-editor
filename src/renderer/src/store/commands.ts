@@ -309,8 +309,11 @@ export async function duckUnderSpeech(clipId: Id): Promise<void> {
   )
 }
 
-/** Cuts a video clip at every shot change FFmpeg detects in the part of the source it uses. */
-export async function splitAtScenes(clipId: Id): Promise<void> {
+/**
+ * Cuts a video clip at every shot change FFmpeg detects in the part of the source it uses. `threshold` is
+ * FFmpeg's scene score (0-1): cuts between similar-looking shots can score as low as 0.2.
+ */
+export async function splitAtScenes(clipId: Id, threshold = 0.3): Promise<void> {
   const { project } = state()
   const clip = findClip(project, clipId)?.clip
   if (!clip || clip.type !== 'video') return
@@ -321,7 +324,7 @@ export async function splitAtScenes(clipId: Id): Promise<void> {
     media.path,
     clip.sourceIn,
     sourceSpan(clip, project.settings.fps),
-    0.35
+    threshold
   )
   let cuts = 0
   edit('Split at scene changes', (draft) => void (cuts = splitAtSourceTimes(draft, clipId, times)))
