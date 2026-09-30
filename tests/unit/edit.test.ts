@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   addTrack,
   clipEnd,
+  clipFromMediaRange,
   collectAudioSources,
   createCaptionClip,
   createTextClip,
@@ -25,7 +26,7 @@ import {
   upsertKeyframe
 } from '@core/index'
 import type { VideoClip } from '@core/index'
-import { assertTrackInvariants, projectWithClips } from './helpers'
+import { assertTrackInvariants, projectWithClips, videoAsset } from './helpers'
 
 describe('tracks', () => {
   it('reorders within the same kind and never crosses into another kind', () => {
@@ -244,5 +245,15 @@ describe('disable and nudge', () => {
     expect(nudgeClips(project, [clips[0]!.id, clips[1]!.id], 3)).toBe(true)
     expect([clips[0]!.start, clips[1]!.start]).toEqual([3, 38])
     expect(nudgeClips(project, [clips[0]!.id], -4)).toBe(false)
+  })
+})
+
+describe('clips from part of a file', () => {
+  it('takes the marked range, kept inside the file', () => {
+    const asset = videoAsset(10)
+    const clip = clipFromMediaRange(asset, 30, 30, 2, 3.5) as VideoClip
+    expect([clip.start, clip.sourceIn, clip.duration]).toEqual([30, 2, 45])
+    const tail = clipFromMediaRange(asset, 0, 30, 9, 12) as VideoClip
+    expect([tail.sourceIn, tail.duration]).toEqual([9, 30])
   })
 })

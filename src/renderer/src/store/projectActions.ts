@@ -1,6 +1,7 @@
 import {
   addMedia,
   clipFromMedia,
+  clipFromMediaRange,
   createProject,
   insertClipAuto,
   newId,
@@ -189,13 +190,17 @@ export function addAssetToTimeline(
   asset: MediaAsset,
   frame = get().playhead,
   trackId?: Id,
-  mode: PlaceMode = 'auto'
+  mode: PlaceMode = 'auto',
+  /** Only this part of the file, in seconds (from the source monitor's marks). */
+  range?: [number, number]
 ): void {
   let clipId: Id | null = null
   const label =
     mode === 'insert' ? 'Insert clip' : mode === 'overwrite' ? 'Overwrite clip' : 'Add to timeline'
   edit(label, (draft) => {
-    const clip = clipFromMedia(asset, frame, draft.settings.fps)
+    const clip = range
+      ? clipFromMediaRange(asset, frame, draft.settings.fps, range[0], range[1])
+      : clipFromMedia(asset, frame, draft.settings.fps)
     const kind = trackKindFor(clip.type)
     const target =
       draft.tracks.find((t) => t.id === trackId && t.kind === kind && !t.locked) ??

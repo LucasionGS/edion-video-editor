@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { nextEditPoint, nextMarker } from '@core/index'
+import { markSource, placeSource, stepSource, toggleSourcePlayback, useSource } from '@/store/source'
 import { jumpSeconds, seek, seekToEnd, stepFrames, togglePlayback } from '@/engine/playback/session'
 import {
   addMarker,
@@ -38,7 +39,13 @@ const jumpTo = (frame: number | null): void => {
 }
 
 export const COMMANDS: Command[] = [
-  { id: 'play', label: 'Play / pause', group: 'Playback', keys: [' '], run: togglePlayback },
+  {
+    id: 'play',
+    label: 'Play / pause',
+    group: 'Playback',
+    keys: [' '],
+    run: () => (useSource.getState().active ? toggleSourcePlayback() : togglePlayback())
+  },
   {
     id: 'pause',
     label: 'Pause',
@@ -59,9 +66,15 @@ export const COMMANDS: Command[] = [
     label: 'Previous frame',
     group: 'Playback',
     keys: ['arrowleft'],
-    run: () => stepFrames(-1)
+    run: () => (useSource.getState().active ? stepSource(-1) : (() => stepFrames(-1))())
   },
-  { id: 'nextFrame', label: 'Next frame', group: 'Playback', keys: ['arrowright'], run: () => stepFrames(1) },
+  {
+    id: 'nextFrame',
+    label: 'Next frame',
+    group: 'Playback',
+    keys: ['arrowright'],
+    run: () => (useSource.getState().active ? stepSource(1) : (() => stepFrames(1))())
+  },
   {
     id: 'prev10',
     label: 'Back 10 frames',
@@ -117,6 +130,20 @@ export const COMMANDS: Command[] = [
     group: 'Playback',
     keys: ['f'],
     run: () => useShortcutState.getState().onFullscreen?.()
+  },
+  {
+    id: 'sourceInsert',
+    label: 'Insert the source at the playhead',
+    group: 'Editing',
+    keys: [','],
+    run: () => placeSource('insert')
+  },
+  {
+    id: 'sourceOverwrite',
+    label: 'Overwrite with the source at the playhead',
+    group: 'Editing',
+    keys: ['.'],
+    run: () => placeSource('overwrite')
   },
   { id: 'start', label: 'Go to start', group: 'Playback', keys: ['home'], run: () => seek(0) },
   { id: 'end', label: 'Go to end', group: 'Playback', keys: ['end'], run: seekToEnd },
@@ -241,8 +268,20 @@ export const COMMANDS: Command[] = [
     run: () => useEditor.setState((s) => ({ snapping: !s.snapping }))
   },
   { id: 'marker', label: 'Add / remove marker', group: 'Timeline', keys: ['m'], run: addMarker },
-  { id: 'rangeIn', label: 'Set in point', group: 'Timeline', keys: ['i'], run: () => setRangeEdge('in') },
-  { id: 'rangeOut', label: 'Set out point', group: 'Timeline', keys: ['o'], run: () => setRangeEdge('out') },
+  {
+    id: 'rangeIn',
+    label: 'Set in point',
+    group: 'Timeline',
+    keys: ['i'],
+    run: () => (useSource.getState().active ? markSource('in') : (() => setRangeEdge('in'))())
+  },
+  {
+    id: 'rangeOut',
+    label: 'Set out point',
+    group: 'Timeline',
+    keys: ['o'],
+    run: () => (useSource.getState().active ? markSource('out') : (() => setRangeEdge('out'))())
+  },
   { id: 'rangeClear', label: 'Clear in / out', group: 'Timeline', keys: ['alt+x'], run: clearRange },
   {
     id: 'zoomIn',

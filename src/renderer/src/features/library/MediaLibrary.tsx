@@ -11,6 +11,7 @@ import {
   Gauge,
   ImageIcon,
   Link2,
+  MonitorPlay,
   MousePointerClick,
   Plus,
   Search,
@@ -30,6 +31,7 @@ import {
   relinkMedia
 } from '@/store/projectActions'
 import { Button } from '@/ui/Button'
+import { openInSource } from '@/store/source'
 import { Segmented } from '@/ui/Field'
 import { IconButton } from '@/ui/IconButton'
 import { EmptyState } from '@/ui/Panel'
@@ -190,6 +192,12 @@ function MediaCard({ asset, missing, uses }: { asset: MediaAsset; missing: boole
         icon: <Plus size={13} />,
         disabled: missing,
         onSelect: () => addAssetToTimeline(asset)
+      },
+      {
+        label: 'Open in source monitor',
+        icon: <MonitorPlay size={13} />,
+        disabled: missing,
+        onSelect: () => openInSource(asset.id)
       },
       {
         label: 'Insert at playhead',

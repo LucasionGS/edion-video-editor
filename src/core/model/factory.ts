@@ -197,3 +197,26 @@ export function createAdjustmentClip(start: number, fps: number): AdjustmentClip
     effects: []
   }
 }
+
+/**
+ * A clip playing seconds [from, to) of a media file (e.g. the in and out marks of the source monitor).
+ * Stills ignore the range's position and just take its length.
+ */
+export function clipFromMediaRange(
+  asset: MediaAsset,
+  start: number,
+  fps: number,
+  from: number,
+  to: number
+): VideoClip | AudioClip | ImageClip {
+  const clip = clipFromMedia(asset, start, fps)
+  const duration = Math.max(1, Math.round((to - from) * fps))
+  if (clip.type === 'image') {
+    clip.duration = duration
+    return clip
+  }
+  const end = asset.duration > 0 ? asset.duration : to
+  clip.sourceIn = Math.max(0, Math.min(from, end - 1 / fps))
+  clip.duration = Math.max(1, Math.min(duration, Math.floor((end - clip.sourceIn) * fps + 1e-6)))
+  return clip
+}
