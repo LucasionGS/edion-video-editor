@@ -1,5 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronFirst, ChevronLast, Pause, Play, StepBack, StepForward, Volume2, VolumeX } from 'lucide-react'
+import {
+  Activity,
+  ChevronFirst,
+  ChevronLast,
+  Grid3x3,
+  Pause,
+  Play,
+  StepBack,
+  StepForward,
+  Volume2,
+  VolumeX
+} from 'lucide-react'
 import { formatClock, formatPosition, projectDuration, TIME_DISPLAYS } from '@core/index'
 import {
   attachPlayer,
@@ -13,6 +24,8 @@ import { setTimeDisplay, useEditor } from '@/store/editor'
 import { IconButton } from '@/ui/IconButton'
 import { AudioMeter } from './AudioMeter'
 import { Gizmo } from './Gizmo'
+import { GUIDE_MODES, Guides, type GuideMode } from './Guides'
+import { Scopes } from './Scopes'
 
 const QUALITIES = [
   { label: 'Full', value: 1 },
@@ -28,6 +41,8 @@ export function Viewer() {
   const height = useEditor((s) => s.project.settings.height)
   const [quality, setQuality] = useState(1)
   const [muted, setMuted] = useState(false)
+  const [guides, setGuides] = useState<GuideMode>('off')
+  const [scopes, setScopes] = useState(false)
   const stageRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState({ width: 0, height: 0 })
 
@@ -70,8 +85,10 @@ export function Viewer() {
           style={{ left: fitted.left, top: fitted.top, width: fitted.width, height: fitted.height }}
         >
           <canvas ref={canvasRef} className="size-full rounded-sm shadow-lg shadow-black/50" />
+          <Guides mode={guides} />
           {scale > 0 && <Gizmo scale={scale} />}
         </div>
+        {scopes && <Scopes />}
       </div>
       <footer className="@container grid h-11 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-t border-line bg-surface px-3">
         <Timecode fps={fps} />
@@ -104,6 +121,21 @@ export function Viewer() {
         </div>
         <div className="flex items-center justify-end gap-2">
           <AudioMeter />
+          <IconButton label="Video scopes" active={scopes} onClick={() => setScopes(!scopes)}>
+            <Activity size={15} />
+          </IconButton>
+          <IconButton
+            label={`Guides: ${GUIDE_MODES.find((g) => g.value === guides)!.label} (click to change)`}
+            active={guides !== 'off'}
+            onClick={() =>
+              setGuides(
+                GUIDE_MODES[(GUIDE_MODES.findIndex((g) => g.value === guides) + 1) % GUIDE_MODES.length]!
+                  .value
+              )
+            }
+          >
+            <Grid3x3 size={15} />
+          </IconButton>
           <IconButton label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={() => setMuted(!muted)}>
             {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </IconButton>

@@ -23,9 +23,11 @@ export class Player {
   private lastFrame = -1
   /** Preview resolution relative to the project (1 = full). */
   quality = 1
+  /** Called right after every repaint, while the canvas still holds the frame (e.g. for scopes). */
+  readonly drawListeners = new Set<(canvas: HTMLCanvasElement) => void>()
 
   constructor(
-    canvas: HTMLCanvasElement,
+    private readonly canvas: HTMLCanvasElement,
     api: EngineApi,
     private readonly host: PlayerHost
   ) {
@@ -85,16 +87,21 @@ export class Player {
       if (frame !== this.lastFrame) {
         this.lastFrame = frame
         this.host.onFrame(frame)
-        this.renderer.draw(project, frame)
+        this.draw(project, frame)
         this.renderer.preroll(project, frame + Math.round(PREROLL_SECONDS * fps))
-      } else if (this.dirty) this.renderer.draw(project, frame)
+      } else if (this.dirty) this.draw(project, frame)
       this.dirty = false
       return
     }
     if (!this.dirty) return
     this.dirty = false
     this.lastFrame = -1
-    this.renderer.draw(project, this.host.getPlayhead())
+    this.draw(project, this.host.getPlayhead())
+  }
+
+  private draw(project: Project, frame: number): void {
+    this.renderer.draw(project, frame)
+    for (const listener of this.drawListeners) listener(this.canvas)
   }
 
   dispose(): void {
