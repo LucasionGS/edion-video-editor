@@ -114,9 +114,63 @@ void main() {
     o_color = mix(za, zb, smoothstep(0.3, 0.7, p));
     return;
   }
-  vec2 d = (uv - 0.5) * vec2(u_aspect, 1.0);
-  float radius = e * length(vec2(u_aspect, 1.0)) * 0.5 * 1.05;
-  o_color = mix(a, b, 1.0 - smoothstep(radius - 0.01, radius + 0.01, length(d)));
+  if (u_type == 12) {
+    vec2 d = (uv - 0.5) * vec2(u_aspect, 1.0);
+    float radius = e * length(vec2(u_aspect, 1.0)) * 0.5 * 1.05;
+    o_color = mix(a, b, 1.0 - smoothstep(radius - 0.01, radius + 0.01, length(d)));
+    return;
+  }
+  if (u_type == 13) {
+    // Blur dissolve: both pictures blur towards the middle while they cross.
+    float r = sin(p * 3.14159) * 0.02;
+    vec4 ba = vec4(0.0);
+    vec4 bb = vec4(0.0);
+    for (int i = 0; i < 16; i++) {
+      float angle = float(i) * 2.39996;
+      vec2 o = vec2(cos(angle), sin(angle)) * r * sqrt(float(i) / 16.0) * vec2(1.0, u_aspect);
+      ba += texture(u_from, uv + o);
+      bb += texture(u_to, uv + o);
+    }
+    o_color = mix(ba / 16.0, bb / 16.0, e);
+    return;
+  }
+  if (u_type == 14 || u_type == 15) {
+    // Whip pan: a fast push with motion blur along the move.
+    float dir = u_type == 14 ? -1.0 : 1.0;
+    float shift = dir * e;
+    float streak = sin(p * 3.14159) * 0.12;
+    vec4 sum = vec4(0.0);
+    for (int i = 0; i < 12; i++) {
+      float t = (float(i) / 11.0 - 0.5) * streak;
+      vec2 at = uv - vec2(shift + t, 0.0);
+      vec4 outgoing = sampleIn(u_from, at);
+      vec4 incoming = sampleIn(u_to, at + vec2(dir, 0.0));
+      sum += outgoing + incoming * (1.0 - outgoing.a);
+    }
+    o_color = sum / 12.0;
+    return;
+  }
+  if (u_type == 16) {
+    // Spin: the old picture turns and shrinks away, the new one turns in.
+    vec2 c = (uv - 0.5) * vec2(u_aspect, 1.0);
+    float angle = e * 6.28318;
+    float zoom = 1.0 + sin(p * 3.14159) * 1.5;
+    vec2 q = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * c * zoom;
+    vec2 at = q / vec2(u_aspect, 1.0) + 0.5;
+    o_color = mix(sampleIn(u_from, at), sampleIn(u_to, at), smoothstep(0.4, 0.6, p));
+    return;
+  }
+  // Glitch: blocky horizontal tears and split colour channels, strongest at the cut.
+  float strength = sin(p * 3.14159);
+  float band = floor(uv.y * 24.0);
+  float noise = fract(sin(band * 91.7 + floor(p * 18.0) * 13.3) * 43758.5);
+  float tear = (noise - 0.5) * 0.2 * strength * step(0.55, noise);
+  vec2 at = vec2(uv.x + tear, uv.y);
+  float split = 0.02 * strength;
+  vec4 src = p < 0.5 ? texture(u_from, at) : texture(u_to, at);
+  float r = (p < 0.5 ? texture(u_from, at + vec2(split, 0.0)) : texture(u_to, at + vec2(split, 0.0))).r;
+  float bl = (p < 0.5 ? texture(u_from, at - vec2(split, 0.0)) : texture(u_to, at - vec2(split, 0.0))).b;
+  o_color = vec4(r, src.g, bl, src.a);
 }`
 
 const EFFECT_HEADER = `#version 300 es
@@ -298,6 +352,41 @@ uniform float brightness;
 void main() {
   vec4 c = texture(u_tex, v_uv);
   o_color = vec4(c.rgb * brightness, c.a);
+}`,
+  blackWhite: `${EFFECT_HEADER}
+uniform float amount, lensFilter, contrast;
+void main() {
+  vec4 c = unpremultiply(texture(u_tex, v_uv));
+  // A coloured filter in front of the lens: that colour renders lighter.
+  vec3 weights = lensFilter < 0.5 ? vec3(0.2126, 0.7152, 0.0722) : lensFilter < 1.5 ? vec3(0.7, 0.25, 0.05) : lensFilter < 2.5 ? vec3(0.2, 0.7, 0.1) : vec3(0.1, 0.3, 0.6);
+  float g = dot(c.rgb, weights);
+  g = clamp((g - 0.5) * (1.0 + contrast * (contrast > 0.0 ? 2.0 : 1.0)) + 0.5, 0.0, 1.0);
+  o_color = premultiply(vec4(mix(c.rgb, vec3(g), amount), c.a));
+}`,
+  duotone: `${EFFECT_HEADER}
+uniform float shadowHue, highlightHue, amount;
+void main() {
+  vec4 c = unpremultiply(texture(u_tex, v_uv));
+  float g = luma(c.rgb);
+  vec3 dark = hsv2rgb(vec3(shadowHue / 360.0, 0.75, 0.35));
+  vec3 light = hsv2rgb(vec3(highlightHue / 360.0, 0.45, 1.0));
+  o_color = premultiply(vec4(mix(c.rgb, mix(dark, light, smoothstep(0.0, 1.0, g)), amount), c.a));
+}`,
+  posterize: `${EFFECT_HEADER}
+uniform float levels;
+void main() {
+  vec4 c = unpremultiply(texture(u_tex, v_uv));
+  float n = max(levels, 2.0) - 1.0;
+  o_color = premultiply(vec4(floor(c.rgb * n + 0.5) / n, c.a));
+}`,
+  // v_uv.y grows upwards in framebuffer space, so "top" is y > 0.5.
+  mirror: `${EFFECT_HEADER}
+uniform float mode;
+void main() {
+  vec2 uv = v_uv;
+  if (mode < 0.5 || mode > 1.5) uv.x = uv.x > 0.5 ? 1.0 - uv.x : uv.x;
+  if (mode > 0.5) uv.y = uv.y < 0.5 ? 1.0 - uv.y : uv.y;
+  o_color = texture(u_tex, uv);
 }`,
   glowExtract: `${EFFECT_HEADER}
 uniform float threshold;

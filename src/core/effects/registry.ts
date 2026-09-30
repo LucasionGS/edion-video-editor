@@ -155,6 +155,34 @@ export const EFFECTS: readonly EffectSpec[] = [
     params: { intensity: amount('Intensity') },
     resource: { label: 'LUT file', extensions: ['cube'] }
   },
+  {
+    type: 'blackWhite',
+    label: 'Black & white',
+    params: {
+      amount: amount('Amount'),
+      lensFilter: choice('Filter', ['Neutral', 'Red', 'Green', 'Blue']),
+      contrast: unit('Contrast')
+    }
+  },
+  {
+    type: 'duotone',
+    label: 'Duotone',
+    params: {
+      shadowHue: { label: 'Shadows hue', min: 0, max: 360, step: 1, default: 230, unit: '°' },
+      highlightHue: { label: 'Highlights hue', min: 0, max: 360, step: 1, default: 40, unit: '°' },
+      amount: amount('Amount')
+    }
+  },
+  {
+    type: 'posterize',
+    label: 'Posterize',
+    params: { levels: { label: 'Levels', min: 2, max: 16, step: 1, default: 5 } }
+  },
+  {
+    type: 'mirror',
+    label: 'Mirror',
+    params: { mode: choice('Mirror', ['Left → right', 'Top → bottom', 'Four ways']) }
+  },
   { type: 'chromaticAberration', label: 'Chromatic aberration', params: { amount: px('Amount', 4, 30) } },
   { type: 'grain', label: 'Film grain', params: { amount: amount('Amount', 0.25), size: px('Size', 1.5, 6) } }
 ]
@@ -180,7 +208,12 @@ export const TRANSITIONS: readonly TransitionSpec[] = [
   { type: 'slideUp', label: 'Push up' },
   { type: 'slideDown', label: 'Push down' },
   { type: 'zoom', label: 'Zoom' },
-  { type: 'iris', label: 'Iris' }
+  { type: 'iris', label: 'Iris' },
+  { type: 'crossBlur', label: 'Blur dissolve' },
+  { type: 'whipLeft', label: 'Whip pan left' },
+  { type: 'whipRight', label: 'Whip pan right' },
+  { type: 'spin', label: 'Spin' },
+  { type: 'glitch', label: 'Glitch' }
 ]
 
 export const DEFAULT_TRANSITION_SECONDS = 0.5
