@@ -37,6 +37,7 @@ import { editClips } from '@/store/clipEdits'
 import { insertHoldAtPlayhead, normalizeLoudness } from '@/store/commands'
 import { toast } from '@/store/feedback'
 import { AudioEffectsSection, MixerSection, PanRow } from './AudioSections'
+import { MarkersSection } from './MarkersSection'
 import { Button } from '@/ui/Button'
 import { ColorInput } from '@/ui/ColorInput'
 import { Segmented, Select } from '@/ui/Field'
@@ -63,6 +64,7 @@ export function Inspector() {
     return (
       <>
         <ProjectSettings />
+        <MarkersSection />
         <MixerSection />
       </>
     )

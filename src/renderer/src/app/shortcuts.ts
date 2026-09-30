@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
+import { nextEditPoint, nextMarker } from '@core/index'
 import { jumpSeconds, seek, seekToEnd, stepFrames, togglePlayback } from '@/engine/playback/session'
 import {
   addMarker,
@@ -25,6 +26,10 @@ export interface Command {
   /** Combos are `[ctrl+][shift+][alt+]<key>`, lower-case; ctrl also matches ⌘ on macOS. */
   keys: string[]
   run(): void
+}
+
+const jumpTo = (frame: number | null): void => {
+  if (frame !== null) seek(frame)
 }
 
 export const COMMANDS: Command[] = [
@@ -65,6 +70,34 @@ export const COMMANDS: Command[] = [
     group: 'Playback',
     keys: ['shift+arrowright'],
     run: () => stepFrames(10)
+  },
+  {
+    id: 'prevEdit',
+    label: 'Previous edit point',
+    group: 'Playback',
+    keys: ['arrowup'],
+    run: () => jumpTo(nextEditPoint(useEditor.getState().project, useEditor.getState().playhead, -1))
+  },
+  {
+    id: 'nextEdit',
+    label: 'Next edit point',
+    group: 'Playback',
+    keys: ['arrowdown'],
+    run: () => jumpTo(nextEditPoint(useEditor.getState().project, useEditor.getState().playhead, 1))
+  },
+  {
+    id: 'prevMarker',
+    label: 'Previous marker',
+    group: 'Playback',
+    keys: ['ctrl+shift+m'],
+    run: () => jumpTo(nextMarker(useEditor.getState().project, useEditor.getState().playhead, -1))
+  },
+  {
+    id: 'nextMarker',
+    label: 'Next marker',
+    group: 'Playback',
+    keys: ['shift+m'],
+    run: () => jumpTo(nextMarker(useEditor.getState().project, useEditor.getState().playhead, 1))
   },
   { id: 'start', label: 'Go to start', group: 'Playback', keys: ['home'], run: () => seek(0) },
   { id: 'end', label: 'Go to end', group: 'Playback', keys: ['end'], run: seekToEnd },
