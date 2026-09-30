@@ -184,3 +184,16 @@ describe('type-on text', () => {
     expect(revealedLetters(clip, 30, 30)).toBe(13)
   })
 })
+
+describe('history steps', () => {
+  it('lists undoable and redoable steps in order', () => {
+    const history = new History<{ n: number }>()
+    let state = { n: 0 }
+    for (const label of ['one', 'two', 'three']) state = history.apply(state, label, (d) => void d.n++)
+    state = history.undo(state)
+    expect(history.steps).toEqual({ undo: ['one', 'two'], redo: ['three'] })
+    state = history.undo(state)
+    expect(history.steps).toEqual({ undo: ['one'], redo: ['two', 'three'] })
+    expect(state.n).toBe(1)
+  })
+})

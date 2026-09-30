@@ -48,7 +48,8 @@ export const ClipView = memo(function ClipView({
   locked,
   missing
 }: Props) {
-  const { color, Icon } = look[clip.type]
+  const { color: kindColor, Icon } = look[clip.type]
+  const color = clip.color ?? kindColor
   const tool = useEditor((s) => s.tool)
   const bodyCursor =
     tool === 'razor' ? 'cursor-crosshair' : tool === 'slip' || tool === 'slide' ? 'cursor-ew-resize' : ''

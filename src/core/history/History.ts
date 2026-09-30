@@ -32,6 +32,14 @@ export class History<T extends object> {
     return this.redoStack[this.redoStack.length - 1]?.label
   }
 
+  /** Labels of the undoable steps (oldest first) and of the redoable ones (next first). */
+  get steps(): { undo: string[]; redo: string[] } {
+    return {
+      undo: this.undoStack.map((e) => e.label),
+      redo: [...this.redoStack].reverse().map((e) => e.label)
+    }
+  }
+
   apply(state: T, label: string, recipe: (draft: Draft<T>) => void): T {
     const [next, patches, inverse] = produceWithPatches(state, recipe)
     if (patches.length === 0) return state

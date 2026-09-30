@@ -132,3 +132,81 @@ export function snapToFrame(
     guidesY: sy.guide === null ? [] : [sy.guide]
   }
 }
+
+/** A rectangle in project pixels, origin top-left. */
+export interface Cell {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type SplitLayout = 'sideBySide' | 'topBottom' | 'threeColumns' | 'grid' | 'pictureInPicture'
+
+export const SPLIT_LAYOUTS: ReadonlyArray<{ value: SplitLayout; label: string; count: number }> = [
+  { value: 'sideBySide', label: 'Side by side', count: 2 },
+  { value: 'topBottom', label: 'Top and bottom', count: 2 },
+  { value: 'threeColumns', label: 'Three columns', count: 3 },
+  { value: 'grid', label: '2 × 2 grid', count: 4 },
+  { value: 'pictureInPicture', label: 'Picture in picture', count: 2 }
+]
+
+/** The cells of a layout, in the order the clips fill them. */
+export function layoutCells(layout: SplitLayout, canvas: Canvas, gap = 0): Cell[] {
+  const { width: W, height: H } = canvas
+  const half = (size: number): number => (size - gap) / 2
+  switch (layout) {
+    case 'sideBySide':
+      return [
+        { x: 0, y: 0, width: half(W), height: H },
+        { x: half(W) + gap, y: 0, width: half(W), height: H }
+      ]
+    case 'topBottom':
+      return [
+        { x: 0, y: 0, width: W, height: half(H) },
+        { x: 0, y: half(H) + gap, width: W, height: half(H) }
+      ]
+    case 'threeColumns': {
+      const w = (W - gap * 2) / 3
+      return [0, 1, 2].map((i) => ({ x: i * (w + gap), y: 0, width: w, height: H }))
+    }
+    case 'grid':
+      return [0, 1, 2, 3].map((i) => ({
+        x: (i % 2) * (half(W) + gap),
+        y: Math.floor(i / 2) * (half(H) + gap),
+        width: half(W),
+        height: half(H)
+      }))
+    case 'pictureInPicture': {
+      const margin = Math.round(Math.min(W, H) * 0.04)
+      const width = W * 0.3
+      const height = H * 0.3
+      return [
+        { x: 0, y: 0, width: W, height: H },
+        { x: W - margin - width, y: H - margin - height, width, height }
+      ]
+    }
+  }
+}
+
+/**
+ * Scale, crop and position that make a layer of natural `size` exactly fill `cell`: scaled to cover it and
+ * cropped evenly on the sides that stick out. The anchor is assumed to be the centre.
+ */
+export function fillCell(
+  size: Vec2,
+  cell: Cell,
+  canvas: Canvas
+): { scale: number; crop: Crop; position: Vec2 } {
+  const scale = Math.max(cell.width / Math.max(1, size[0]), cell.height / Math.max(1, size[1]))
+  const excessX = Math.max(0, size[0] * scale - cell.width) / (2 * size[0] * scale)
+  const excessY = Math.max(0, size[1] * scale - cell.height) / (2 * size[1] * scale)
+  return {
+    scale,
+    crop: { left: excessX, right: excessX, top: excessY, bottom: excessY },
+    position: [
+      cell.x + cell.width / 2 - canvas.width / 2 + 0,
+      cell.y + cell.height / 2 - canvas.height / 2 + 0
+    ]
+  }
+}

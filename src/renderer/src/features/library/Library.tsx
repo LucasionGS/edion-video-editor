@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Blend, Captions, FolderOpen, Type } from 'lucide-react'
+import { Blend, Captions, FolderOpen, History, Type } from 'lucide-react'
 import { CaptionsLibrary } from './CaptionsLibrary'
+import { HistoryPanel } from './HistoryPanel'
 import { MediaLibrary } from './MediaLibrary'
 import { TitlesLibrary } from './TitlesLibrary'
 import { TransitionsLibrary } from './TransitionsLibrary'
@@ -9,7 +10,8 @@ const TABS = [
   { id: 'media', label: 'Media', Icon: FolderOpen, Panel: MediaLibrary },
   { id: 'titles', label: 'Text', Icon: Type, Panel: TitlesLibrary },
   { id: 'transitions', label: 'Transitions', Icon: Blend, Panel: TransitionsLibrary },
-  { id: 'captions', label: 'Captions', Icon: Captions, Panel: CaptionsLibrary }
+  { id: 'captions', label: 'Captions', Icon: Captions, Panel: CaptionsLibrary },
+  { id: 'history', label: 'History', Icon: History, Panel: HistoryPanel }
 ] as const
 
 export function Library() {

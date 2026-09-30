@@ -14,9 +14,11 @@ import {
   FlipHorizontal2,
   FlipVertical2,
   Gauge,
+  LayoutGrid,
   Link2,
   Maximize,
   Move,
+  Palette,
   Pause,
   Rewind,
   RotateCcw,
@@ -37,16 +39,19 @@ import {
   effectSpec,
   evaluate,
   findClip,
+  fillCell,
   frameScale,
   gapAt,
   hasEffects,
   isAudibleClip,
+  layoutCells,
   isVisualClip,
   setReversed,
   setTransition,
-  setValueAt
+  setValueAt,
+  SPLIT_LAYOUTS
 } from '@core/index'
-import type { HorizontalAlign, Id, Project, VerticalAlign, VisualClip } from '@core/index'
+import type { HorizontalAlign, Id, Project, SplitLayout, VerticalAlign, VisualClip } from '@core/index'
 import { COMMANDS, formatCombo, keysFor, useShortcutState } from '@/app/shortcuts'
 import { naturalSize } from '@/engine/layerSize'
 import type { MenuItem } from '@/ui/ContextMenu'
@@ -140,6 +145,44 @@ function align(label: string, horizontal: HorizontalAlign | null, vertical: Vert
     )
   })
 }
+
+/** Arranges the selected video and image clips in a split-screen layout, bottom track first. */
+function applyLayout(layout: SplitLayout): void {
+  const { project, selection } = useEditor.getState()
+  const order = selection
+    .flatMap((id) => {
+      const found = findClip(project, id)
+      return found && (found.clip.type === 'video' || found.clip.type === 'image')
+        ? [{ id, track: project.tracks.indexOf(found.track) }]
+        : []
+    })
+    .sort((a, b) => b.track - a.track)
+    .map((c) => c.id)
+  const cells = layoutCells(layout, project.settings)
+  const label = SPLIT_LAYOUTS.find((l) => l.value === layout)!.label
+  editClips(order, `Layout: ${label}`, (clip, draft) => {
+    const cell = cells[order.indexOf(clip.id)]
+    if (!cell || (clip.type !== 'video' && clip.type !== 'image')) return
+    const frame = localFrame(clip)
+    const { scale, crop, position } = fillCell(naturalSize(draft as Project, clip), cell, draft.settings)
+    clip.crop = crop
+    clip.transform.anchor = [0.5, 0.5]
+    setValueAt(clip.transform.scale, frame, [scale, scale])
+    setValueAt(clip.transform.position, frame, position)
+    setValueAt(clip.transform.rotation, frame, 0)
+  })
+}
+
+export const LABEL_COLORS = [
+  { label: 'Red', value: '#d9534f' },
+  { label: 'Orange', value: '#e8883a' },
+  { label: 'Yellow', value: '#d4b33b' },
+  { label: 'Green', value: '#4caf6a' },
+  { label: 'Teal', value: '#2b9e9e' },
+  { label: 'Blue', value: '#4a7fd6' },
+  { label: 'Purple', value: '#9460d0' },
+  { label: 'Pink', value: '#d45fa0' }
+]
 
 function flip(axis: 0 | 1): void {
   transformSelection(axis === 0 ? 'Flip horizontally' : 'Flip vertically', (clip, frame) => {
@@ -363,6 +406,35 @@ export function clipMenuItems(): MenuItem[] {
       onSelect: () => insertHoldAtPlayhead(clips[0]!.id)
     })
   }
+  const layable = clips.filter((c) => c.type === 'video' || c.type === 'image').length
+  if (layable >= 2) {
+    items.push({
+      type: 'submenu',
+      label: 'Split-screen layout',
+      icon: <LayoutGrid size={13} />,
+      items: SPLIT_LAYOUTS.filter((l) => l.count <= layable).map((l): MenuItem => ({
+        label: l.label,
+        onSelect: () => applyLayout(l.value)
+      }))
+    })
+  }
+  items.push({
+    type: 'submenu',
+    label: 'Colour label',
+    icon: <Palette size={13} />,
+    items: [
+      {
+        label: 'Default',
+        onSelect: () => editClips(selection, 'Clear colour label', (c) => void delete c.color)
+      },
+      { type: 'separator' },
+      ...LABEL_COLORS.map((color): MenuItem => ({
+        label: color.label,
+        icon: <span className="size-2.5 rounded-full" style={{ background: color.value }} />,
+        onSelect: () => editClips(selection, 'Colour label', (c) => void (c.color = color.value))
+      }))
+    ]
+  })
   const linkId = clips[0]!.linkId
   const oneGroup = linkId !== undefined && clips.every((c) => c.linkId === linkId)
   items.push({ type: 'separator' })

@@ -98,6 +98,16 @@ export const rollbackTransaction = (): void => commitProject(history.rollback(ge
 
 export const undo = (): void => commitProject(history.undo(get().project))
 export const redo = (): void => commitProject(history.redo(get().project))
+export const historySteps = (): { undo: string[]; redo: string[] } => history.steps
+
+/** Undoes (negative) or redoes (positive) several steps at once, e.g. from the history panel. */
+export function jumpHistory(steps: number): void {
+  let project = get().project
+  for (let i = 0; i < Math.abs(steps); i++)
+    project = steps < 0 ? history.undo(project) : history.redo(project)
+  commitProject(project)
+}
+
 export const undoLabel = (): string | undefined => history.undoLabel
 export const redoLabel = (): string | undefined => history.redoLabel
 

@@ -78,7 +78,9 @@ const clipBase = {
   start: frames,
   duration: frames.min(1),
   /** Clips sharing a link id (a video and its detached audio) move, trim, split and delete together. */
-  linkId: id.optional()
+  linkId: id.optional(),
+  /** Colour label shown on the timeline (a CSS colour), for organising. */
+  color: z.string().optional()
 }
 const visual = {
   transform: transformSchema,

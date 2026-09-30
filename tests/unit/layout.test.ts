@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { alignedPosition, boundsAroundAnchor, frameScale, snapToFrame } from '@core/index'
+import {
+  alignedPosition,
+  boundsAroundAnchor,
+  frameScale,
+  snapToFrame,
+  fillCell,
+  layoutCells
+} from '@core/index'
 import type { Placement } from '@core/index'
 
 const canvas = { width: 1920, height: 1080 }
@@ -71,5 +78,31 @@ describe('snap to frame', () => {
   it('honours anchor and rotation through the visible box', () => {
     const lowerThird: Placement = { size: [400, 100], scale: [1, 1], rotation: 0, anchor: [0, 1] }
     expect(snapToFrame(lowerThird, [-955, 536], canvas, 8).position).toEqual([-960, 540])
+  })
+})
+
+describe('split-screen layouts', () => {
+  const canvas = { width: 1920, height: 1080 }
+  it('splits the frame into cells', () => {
+    expect(layoutCells('sideBySide', canvas)).toEqual([
+      { x: 0, y: 0, width: 960, height: 1080 },
+      { x: 960, y: 0, width: 960, height: 1080 }
+    ])
+    expect(layoutCells('grid', canvas, 10)[3]).toEqual({ x: 965, y: 545, width: 955, height: 535 })
+    expect(layoutCells('pictureInPicture', canvas)[1]!.x + 576).toBeCloseTo(1920 - 43)
+  })
+
+  it('fills a cell by scaling to cover and cropping the overflow', () => {
+    // A 16:9 layer in a half-width (8:9) cell: scaled to the cell height, cropped left and right.
+    const { scale, crop, position } = fillCell(
+      [1920, 1080],
+      { x: 960, y: 0, width: 960, height: 1080 },
+      canvas
+    )
+    expect(scale).toBe(1)
+    expect(crop.left).toBeCloseTo(0.25)
+    expect(crop.right).toBeCloseTo(0.25)
+    expect(crop.top).toBe(0)
+    expect(position).toEqual([480, 0])
   })
 })
