@@ -1,5 +1,6 @@
 import {
   applyGain,
+  audioOffset,
   breakApart,
   clipAtFrame,
   collectAudioSources,
@@ -8,6 +9,7 @@ import {
   invertRanges,
   sourceRangesToLocal,
   splitAtSourceTimes,
+  syncClip,
   cloneClip,
   closeGap,
   DEFAULT_TRANSITION_SECONDS,
@@ -365,4 +367,43 @@ export function breakApartSelection(): void {
   let restored: Id[] = []
   edit('Break apart', (draft) => void (restored = compounds.flatMap((id) => breakApart(draft, id))))
   select(restored)
+}
+
+/**
+ * Lines the selected clips up with the first one by their sound (e.g. a camera and a separate recorder).
+ * Linked clips move along; one clip per link group is enough.
+ */
+export async function syncSelectionByAudio(): Promise<void> {
+  const { project, selection } = state()
+  const seen = new Set<Id>()
+  const clips = selection.flatMap((id) => {
+    const clip = findClip(project, id)?.clip
+    if (!clip || !('sourceIn' in clip) || seen.has(clip.linkId ?? clip.id)) return []
+    seen.add(clip.linkId ?? clip.id)
+    return findMedia(project, clip.mediaId)?.hasAudio ? [clip] : []
+  })
+  if (clips.length < 2) return toast('Select two or more clips with sound to sync.')
+  toast('Comparing the sound…')
+  const peaksOf = (clip: (typeof clips)[number]) =>
+    window.edion.library.peaks(findMedia(project, clip.mediaId)!.path)
+  const [reference, ...others] = clips
+  const base = await peaksOf(reference!)
+  if (!base) return toast('Could not read the sound of the first clip.', 'error')
+  const offsets: Array<{ id: Id; seconds: number; confidence: number }> = []
+  for (const clip of others) {
+    const peaks = await peaksOf(clip)
+    if (peaks) offsets.push({ id: clip.id, ...audioOffset(base.data, peaks.data, base.perSecond) })
+  }
+  let moved = 0
+  edit('Sync by audio', (draft) => {
+    for (const { id, seconds } of offsets) if (syncClip(draft, reference!.id, id, seconds)) moved++
+  })
+  const weak = offsets.filter((o) => o.confidence < 0.25).length
+  if (moved < offsets.length)
+    toast(
+      `Synced ${moved} of ${offsets.length}; the others would overlap clips or start before 0:00.`,
+      'error'
+    )
+  else if (weak) toast(`Synced, but ${weak} match${weak > 1 ? 'es are' : ' is'} uncertain. Check by ear.`)
+  else toast(`Synced ${moved} clip${moved > 1 ? 's' : ''} by audio.`, 'success')
 }

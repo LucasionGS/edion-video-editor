@@ -75,6 +75,7 @@ import {
   selectAll,
   splitAtPlayhead,
   splitAtScenes,
+  syncSelectionByAudio,
   toggleDisabled,
   toggleLink
 } from './commands'
@@ -410,6 +411,13 @@ export function clipMenuItems(): MenuItem[] {
       label: `Insert frame hold (${FRAME_HOLD_SECONDS} s)`,
       icon: <Pause size={13} />,
       onSelect: () => insertHoldAtPlayhead(clips[0]!.id)
+    })
+  }
+  if (clips.filter((c) => 'sourceIn' in c).length >= 2) {
+    items.push({
+      label: 'Sync by audio',
+      icon: <AudioLines size={13} />,
+      onSelect: () => void syncSelectionByAudio()
     })
   }
   items.push({ type: 'separator' })
