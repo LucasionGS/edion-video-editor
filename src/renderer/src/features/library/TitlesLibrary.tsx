@@ -1,7 +1,10 @@
-import { Circle, SlidersHorizontal, Square, Type } from 'lucide-react'
-import { createAdjustmentClip, createShapeClip, createTextClip } from '@core/index'
+import { Brush, Captions, Circle, SlidersHorizontal, Square, Trash2, Type } from 'lucide-react'
+import { createAdjustmentClip, createShapeClip, createStyledTextClip, createTextClip } from '@core/index'
 import type { TextClip } from '@core/index'
-import { addGeneratedClip } from '@/store/commands'
+import { addGeneratedClip, applyTextStyle, applyStyleToCaptions } from '@/store/commands'
+import { useEditor } from '@/store/editor'
+import { deleteTextStyle, usePresets } from '@/store/presets'
+import { openContextMenu } from '@/ui/ContextMenu'
 
 interface TitlePreset {
   name: string
@@ -104,6 +107,7 @@ export function TitlesLibrary() {
           </button>
         ))}
       </Group>
+      <MyStyles />
       <Group title="Shapes">
         <button
           className={card}
@@ -146,5 +150,70 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
       <h3 className="mb-1.5 text-2xs font-semibold tracking-wider text-faint uppercase">{title}</h3>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-2">{children}</div>
     </section>
+  )
+}
+
+/** Text styles the user saved (right-click a text clip → “Save as text style…”), for every project. */
+function MyStyles() {
+  const styles = usePresets((s) => s.text)
+  return (
+    <Group title="My styles">
+      {styles.length === 0 && (
+        <p className="col-span-full text-2xs text-faint">
+          Style a text clip the way you like, then right-click it and choose “Save as text style…”.
+        </p>
+      )}
+      {styles.map(({ name, look }) => (
+        <button
+          key={name}
+          className={`${card} overflow-hidden px-1`}
+          title={`Add “${name}” at the playhead. Right-click for more.`}
+          onClick={() =>
+            addGeneratedClip(`Add ${name}`, (start, settings) =>
+              createStyledTextClip(start, settings.fps, 'Your text', look)
+            )
+          }
+          onContextMenu={(e) =>
+            openContextMenu(e, [
+              {
+                label: 'Apply to selected text',
+                icon: <Brush size={13} />,
+                disabled: !useEditor.getState().selection.length,
+                onSelect: () => applyTextStyle(look, name)
+              },
+              {
+                label: 'Use for captions',
+                icon: <Captions size={13} />,
+                onSelect: () => applyStyleToCaptions(look, name)
+              },
+              { type: 'separator' },
+              {
+                label: `Delete “${name}”`,
+                icon: <Trash2 size={13} />,
+                danger: true,
+                onSelect: () => void deleteTextStyle(name)
+              }
+            ])
+          }
+        >
+          <span
+            className="max-w-full truncate text-sm leading-tight"
+            style={{
+              fontFamily: `"${look.style.fontFamily}", "Inter Variable", sans-serif`,
+              fontWeight: look.style.fontWeight,
+              fontStyle: look.style.italic ? 'italic' : 'normal',
+              color: look.style.color,
+              WebkitTextStroke: look.style.strokeWidth ? `1px ${look.style.strokeColor}` : undefined,
+              background: look.style.backgroundColor,
+              padding: '1px 4px',
+              borderRadius: 4
+            }}
+          >
+            Aa
+          </span>
+          <span className="max-w-full truncate text-2xs">{name}</span>
+        </button>
+      ))}
+    </Group>
   )
 }

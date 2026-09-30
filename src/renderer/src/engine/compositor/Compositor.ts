@@ -1,5 +1,5 @@
 import { effectSpec, TRANSITIONS } from '@core/index'
-import type { CaptionClip, Id, Layer, Lut3D, ResolvedEffect, Scene, SceneNode } from '@core/index'
+import type { CaptionNode, Id, Layer, Lut3D, ResolvedEffect, Scene, SceneNode } from '@core/index'
 import { compileProgram, createTexture } from './gl'
 import { rasterizeShape, rasterizeText, type Raster } from './raster'
 import {
@@ -632,7 +632,7 @@ export class Compositor {
     return this.rasterTexture(key, () => rasterizeShape(clip, quality))
   }
 
-  private captionLayer(scene: Scene, caption: CaptionClip): Layer {
+  private captionLayer(scene: Scene, { clip: caption, reveal, opacity }: CaptionNode): Layer {
     const style = scene.captionStyle
     const margin = scene.height * 0.06
     return {
@@ -658,13 +658,14 @@ export class Compositor {
         }
       },
       localFrame: 0,
+      ...(reveal !== undefined ? { reveal } : {}),
       transform: {
         x: 0,
         y: scene.height / 2 - margin,
         scaleX: 1,
         scaleY: 1,
         rotation: 0,
-        opacity: 1,
+        opacity,
         anchorX: 0.5,
         anchorY: 1
       },

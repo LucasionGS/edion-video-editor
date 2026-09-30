@@ -6,6 +6,7 @@ import {
   AudioWaveform,
   Bookmark,
   Blend,
+  Brush,
   BetweenHorizontalStart,
   Clapperboard,
   ClipboardPaste,
@@ -28,6 +29,7 @@ import {
   Scissors,
   SquareSplitHorizontal,
   Trash2,
+  Type,
   Ungroup,
   Unlink,
   Vibrate,
@@ -35,6 +37,7 @@ import {
 } from 'lucide-react'
 import {
   alignedPosition,
+  captureTextLook,
   closeAllGaps,
   DEFAULT_TRANSITION_SECONDS,
   defaultTransform,
@@ -60,6 +63,7 @@ import { naturalSize } from '@/engine/layerSize'
 import type { MenuItem } from '@/ui/ContextMenu'
 import { editClips, localFrame } from './clipEdits'
 import {
+  applyTextStyle,
   closeGapAt,
   copySelection,
   FRAME_HOLD_SECONDS,
@@ -80,7 +84,7 @@ import {
   toggleLink
 } from './commands'
 import { openDialog, promptText } from './dialogs'
-import { saveEffectPreset } from './presets'
+import { saveEffectPreset, saveTextStyle, usePresets } from './presets'
 import { processClip } from './projectActions'
 import { edit, select, useEditor } from './editor'
 
@@ -249,6 +253,36 @@ export function clipMenuItems(): MenuItem[] {
       onSelect: splitAtPlayhead
     }
   ]
+  const textClips = clips.filter((c) => c.type === 'text')
+  const savedStyles = usePresets.getState().text
+  if (textClips.length > 0) {
+    items.push({ type: 'separator' })
+    if (textClips.length === 1) {
+      const source = textClips[0]!
+      items.push({
+        label: 'Save as text style…',
+        icon: <Type size={13} />,
+        onSelect: () =>
+          promptText({
+            title: 'Save text style',
+            label: 'Name',
+            initial: source.type === 'text' ? source.style.fontFamily : 'My style',
+            confirmLabel: 'Save',
+            onSubmit: (name) => source.type === 'text' && void saveTextStyle(name, captureTextLook(source))
+          })
+      })
+    }
+    if (savedStyles.length > 0)
+      items.push({
+        type: 'submenu',
+        label: 'Apply text style',
+        icon: <Brush size={13} />,
+        items: savedStyles.map((s): MenuItem => ({
+          label: s.name,
+          onSelect: () => applyTextStyle(s.look, s.name)
+        }))
+      })
+  }
   const withEffects =
     clips.length === 1 && hasEffects(clips[0]!) && clips[0]!.effects.length > 0 ? clips[0]! : null
   if (withEffects && hasEffects(withEffects)) {

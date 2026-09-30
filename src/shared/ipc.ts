@@ -219,6 +219,8 @@ export interface AppSettings {
   timeDisplay: string
   /** Named effect stacks saved by the user (core `Effect` objects). */
   effectPresets: EffectPreset[]
+  /** Named text looks saved by the user (core `TextLook` objects). */
+  textStyles: SavedTextStyle[]
   recents: RecentProject[]
 }
 
@@ -226,6 +228,12 @@ export interface EffectPreset {
   name: string
   /** Core `Effect`s; plain JSON here so the IPC contract does not depend on the core. */
   effects: Array<{ type: string; enabled: boolean; params: Record<string, unknown>; resource?: string }>
+}
+
+export interface SavedTextStyle {
+  name: string
+  /** A core `TextLook`; plain JSON here so the IPC contract does not depend on the core. */
+  look: unknown
 }
 
 export interface ProjectFile {

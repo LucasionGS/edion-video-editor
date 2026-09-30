@@ -261,5 +261,12 @@ export const projectSchema = z.object({
   /** Export range in frames, if set. */
   range: z.object({ in: frames, out: frames }).nullable(),
   /** Nested sequences behind compound clips. */
-  sequences: z.array(sequenceSchema).optional()
+  sequences: z.array(sequenceSchema).optional(),
+  /** How captions appear: typed on, and/or faded in and out (frames). */
+  captionAnimation: z
+    .object({
+      reveal: z.object({ mode: z.enum(['letters', 'words']), seconds: z.number().positive() }).optional(),
+      fade: frames.min(0).optional()
+    })
+    .optional()
 })

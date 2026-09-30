@@ -1,5 +1,6 @@
 import {
   applyGain,
+  applyTextLook,
   audioOffset,
   breakApart,
   clipAtFrame,
@@ -33,7 +34,8 @@ import {
   unlinkClips,
   withLinked
 } from '@core/index'
-import type { Clip, Id, ProjectSettings } from '@core/index'
+import type { Clip, Id, ProjectSettings, TextLook } from '@core/index'
+import { editClips } from './clipEdits'
 import { edit, editTargets, select, selectTransition, useEditor } from './editor'
 import { toast } from './feedback'
 
@@ -409,4 +411,24 @@ export async function syncSelectionByAudio(): Promise<void> {
     )
   else if (weak) toast(`Synced, but ${weak} match${weak > 1 ? 'es are' : ' is'} uncertain. Check by ear.`)
   else toast(`Synced ${moved} clip${moved > 1 ? 's' : ''} by audio.`, 'success')
+}
+
+/** Gives the selected text clips a saved look (their words and timing stay). */
+export function applyTextStyle(look: TextLook, name: string): void {
+  const { selection } = state()
+  editClips(selection, `Text style: ${name}`, (clip) => {
+    if (clip.type === 'text') applyTextLook(clip, look)
+  })
+}
+
+/** Makes every caption use a saved look's style, and its type-on if it has one. */
+export function applyStyleToCaptions(look: TextLook, name: string): void {
+  edit(`Captions: ${name}`, (draft) => {
+    draft.captionStyle = JSON.parse(JSON.stringify(look.style)) as typeof draft.captionStyle
+    const animation = { ...draft.captionAnimation }
+    if (look.reveal) animation.reveal = { ...look.reveal }
+    else delete animation.reveal
+    draft.captionAnimation = animation
+  })
+  toast(`Captions now use “${name}”.`, 'success')
 }

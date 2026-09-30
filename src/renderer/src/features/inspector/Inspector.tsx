@@ -40,13 +40,19 @@ import type {
   AnimationPreset,
   BlendMode,
   Clip,
+  Project,
   SpeedRampPreset,
   TextStyle,
   VisualClip
 } from '@core/index'
 import { edit, select, useEditor } from '@/store/editor'
 import { editClips } from '@/store/clipEdits'
-import { breakApartSelection, insertHoldAtPlayhead, normalizeLoudness } from '@/store/commands'
+import {
+  breakApartSelection,
+  insertHoldAtPlayhead,
+  normalizeLoudness,
+  applyStyleToCaptions
+} from '@/store/commands'
 import { toast } from '@/store/feedback'
 import { deleteEffectPreset, presetEffects, usePresets } from '@/store/presets'
 import { openContextMenu } from '@/ui/ContextMenu'
@@ -515,13 +521,87 @@ function TextSection({ clip }: { clip: Extract<Clip, { type: 'text' | 'caption' 
 
 function CaptionStyle() {
   const style = useEditor((s) => s.project.captionStyle)
+  const animation = useEditor((s) => s.project.captionAnimation)
+  const fps = useEditor((s) => s.project.settings.fps)
+  const saved = usePresets((s) => s.text)
+  const animate = (label: string, change: (a: NonNullable<Project['captionAnimation']>) => void): void =>
+    edit(label, (d) => {
+      const next = { ...d.captionAnimation }
+      change(next)
+      d.captionAnimation = next
+    })
   return (
     <>
       <p className="mt-1 text-2xs text-faint">Style (shared by all captions)</p>
+      {saved.length > 0 && (
+        <Row label="Saved style">
+          <Select
+            value=""
+            onChange={(e) => {
+              const found = saved.find((s) => s.name === e.target.value)
+              if (found) applyStyleToCaptions(found.look, found.name)
+            }}
+          >
+            <option value="" disabled>
+              Use a saved style…
+            </option>
+            {saved.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+        </Row>
+      )}
       <TextStyleFields
         style={style}
         onChange={(patch) => edit('Change caption style', (d) => void Object.assign(d.captionStyle, patch))}
       />
+      <Row label="Type on">
+        <Select
+          value={animation?.reveal?.mode ?? 'none'}
+          onChange={(e) =>
+            animate('Caption type-on', (a) => {
+              if (e.target.value === 'none') delete a.reveal
+              else
+                a.reveal = { mode: e.target.value as 'letters' | 'words', seconds: a.reveal?.seconds ?? 0.8 }
+            })
+          }
+        >
+          <option value="none">Off</option>
+          <option value="letters">Letter by letter</option>
+          <option value="words">Word by word</option>
+        </Select>
+        {animation?.reveal && (
+          <NumberInput
+            label="Caption type-on duration"
+            value={animation.reveal.seconds}
+            min={0.1}
+            max={10}
+            step={0.1}
+            precision={1}
+            suffix=" s"
+            className="w-20 flex-none"
+            {...scrub}
+            onChange={(v) =>
+              animate('Caption type-on', (a) => a.reveal && (a.reveal.seconds = Math.max(0.1, v)))
+            }
+          />
+        )}
+      </Row>
+      <Row label="Fade">
+        <NumberInput
+          label="Caption fade"
+          value={(animation?.fade ?? 0) / fps}
+          min={0}
+          max={2}
+          step={0.05}
+          precision={2}
+          suffix=" s"
+          {...scrub}
+          onChange={(v) => animate('Caption fade', (a) => (a.fade = Math.round(Math.max(0, v) * fps)))}
+        />
+      </Row>
     </>
   )
 }

@@ -12,6 +12,7 @@ const DEFAULTS: AppSettings = {
   snapping: null,
   timeDisplay: 'time',
   effectPresets: [],
+  textStyles: [],
   recents: []
 }
 const MAX_RECENTS = 12

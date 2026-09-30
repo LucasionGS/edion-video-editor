@@ -82,6 +82,14 @@ export type SceneNode = Layer | TransitionNode | AdjustmentNode
 export const layersOf = (node: SceneNode): Layer[] =>
   node.kind === 'layer' ? [node] : node.kind === 'transition' ? [node.from, node.to] : []
 
+/** A caption on screen, with its animation resolved for this frame. */
+export interface CaptionNode {
+  clip: CaptionClip
+  /** Letters (spaces not counted) showing while it types on; absent = all. */
+  reveal?: number
+  opacity: number
+}
+
 export interface Scene {
   frame: number
   width: number
@@ -89,7 +97,7 @@ export interface Scene {
   background: string
   /** Back to front. */
   nodes: SceneNode[]
-  captions: CaptionClip[]
+  captions: CaptionNode[]
   captionStyle: TextStyle
 }
 
@@ -142,8 +150,25 @@ function resolveLayer(project: Project, clip: VisualClip, frame: number): Layer 
   return layer
 }
 
+function captionNode(project: Project, clip: CaptionClip, frame: number): CaptionNode {
+  const animation = project.captionAnimation
+  const local = frame - clip.start
+  const fade = Math.min(animation?.fade ?? 0, Math.floor(clip.duration / 2))
+  const opacity = fade > 0 ? Math.max(0, Math.min(1, (local + 1) / fade, (clip.duration - local) / fade)) : 1
+  const node: CaptionNode = { clip, opacity }
+  if (animation?.reveal) {
+    const reveal = revealedLetters({ text: clip.text, reveal: animation.reveal }, local, project.settings.fps)
+    if (reveal !== undefined) node.reveal = reveal
+  }
+  return node
+}
+
 /** Letters (spaces not counted) of a text clip showing at a clip-relative frame, when it types on. */
-export function revealedLetters(clip: TextClip, localFrame: number, fps: number): number | undefined {
+export function revealedLetters(
+  clip: Pick<TextClip, 'text' | 'reveal'>,
+  localFrame: number,
+  fps: number
+): number | undefined {
   if (!clip.reveal) return undefined
   const progress = Math.max(0, Math.min(1, localFrame / Math.max(1, clip.reveal.seconds * fps)))
   const words = clip.text.split(/\s+/).filter(Boolean)
@@ -211,7 +236,7 @@ function evaluateTracks(
     if (track.hidden) continue
     if (track.kind === 'caption') {
       const caption = track.clips.find((c) => frame >= c.start && frame < clipEnd(c) && !c.disabled)
-      if (caption?.type === 'caption') scene.captions.push(caption)
+      if (caption?.type === 'caption') scene.captions.push(captionNode(project, caption, frame))
       continue
     }
     if (track.kind !== 'video') continue
