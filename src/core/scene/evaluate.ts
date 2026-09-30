@@ -9,6 +9,7 @@ import type {
   Effect,
   Id,
   Project,
+  TextClip,
   TextStyle,
   Track,
   Transition,
@@ -43,6 +44,8 @@ export interface ResolvedEffect {
 export interface Layer {
   kind: 'layer'
   clip: VisualClip
+  /** Text being typed on: how many of its letters (not counting spaces) show. Absent = all. */
+  reveal?: number
   /** Frame relative to the clip start. Can fall outside [0, duration) inside a transition. */
   localFrame: number
   /** Position in the source media in seconds (video only). */
@@ -123,6 +126,10 @@ function resolveLayer(project: Project, clip: VisualClip, frame: number): Layer 
     blendMode: clip.blendMode,
     effects: resolveEffects(clip.effects, localFrame)
   }
+  if (clip.type === 'text') {
+    const reveal = revealedLetters(clip, localFrame, project.settings.fps)
+    if (reveal !== undefined) layer.reveal = reveal
+  }
   if (clip.type === 'video') {
     const media = findMedia(project, clip.mediaId)
     const time = sourceTimeAt(clip, localFrame, project.settings.fps)
@@ -131,6 +138,17 @@ function resolveLayer(project: Project, clip: VisualClip, frame: number): Layer 
     layer.sourceTime = Math.max(0, Math.min(time, lastFrameTime))
   }
   return layer
+}
+
+/** Letters (spaces not counted) of a text clip showing at a clip-relative frame, when it types on. */
+export function revealedLetters(clip: TextClip, localFrame: number, fps: number): number | undefined {
+  if (!clip.reveal) return undefined
+  const progress = Math.max(0, Math.min(1, localFrame / Math.max(1, clip.reveal.seconds * fps)))
+  const words = clip.text.split(/\s+/).filter(Boolean)
+  const letters = words.reduce((sum, w) => sum + [...w].length, 0)
+  if (clip.reveal.mode === 'letters') return Math.floor(progress * letters + 1e-9)
+  const shown = Math.floor(progress * words.length + 1e-9)
+  return words.slice(0, shown).reduce((sum, w) => sum + [...w].length, 0)
 }
 
 function transitionAt(track: Track, frame: number): { transition: Transition; from: Clip; to: Clip } | null {

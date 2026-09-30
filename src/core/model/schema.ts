@@ -136,7 +136,9 @@ export const textClipSchema = z.object({
   text: z.string(),
   style: textStyleSchema,
   /** Wrap width in project pixels; 0 = no wrapping. */
-  boxWidth: z.number()
+  boxWidth: z.number(),
+  /** Types the text on over the first `seconds` of the clip, letter by letter or word by word. */
+  reveal: z.object({ mode: z.enum(['letters', 'words']), seconds: z.number().positive() }).optional()
 })
 export const shapeClipSchema = z.object({
   ...clipBase,

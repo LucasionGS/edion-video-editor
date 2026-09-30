@@ -29,8 +29,18 @@ function wrapLines(ctx: OffscreenCanvasRenderingContext2D, text: string, maxWidt
   return lines
 }
 
-/** `scale` is raster pixels per project pixel, so text stays crisp when zoomed or rendered at low preview quality. */
-export function rasterizeText(text: string, style: TextStyle, boxWidth: number, scale: number): Raster {
+/**
+ * `scale` is raster pixels per project pixel, so text stays crisp when zoomed or rendered at low preview
+ * quality. `reveal` limits how many letters (spaces not counted) are drawn, for text that types on; the
+ * layout is always that of the whole text, so nothing moves as letters appear.
+ */
+export function rasterizeText(
+  text: string,
+  style: TextStyle,
+  boxWidth: number,
+  scale: number,
+  reveal = Infinity
+): Raster {
   const measure = new OffscreenCanvas(1, 1).getContext('2d')!
   measure.font = fontOf(style, 1)
   measure.letterSpacing = `${style.letterSpacing}px`
@@ -65,10 +75,35 @@ export function rasterizeText(text: string, style: TextStyle, boxWidth: number, 
   ctx.font = fontOf(style, 1)
   ctx.letterSpacing = `${style.letterSpacing}px`
   ctx.textBaseline = 'middle'
-  ctx.textAlign = style.align
   ctx.lineJoin = 'round'
-  const x = style.align === 'left' ? pad : style.align === 'right' ? width - pad : width / 2
-  lines.forEach((line, i) => {
+  // Partially revealed lines are drawn from their left edge, where the whole line would start.
+  ctx.textAlign = reveal === Infinity ? style.align : 'left'
+  let budget = reveal
+  lines.forEach((full, i) => {
+    let line = full
+    if (budget !== Infinity) {
+      let end = 0
+      for (const char of full) {
+        if (budget <= 0) break
+        if (!/\s/.test(char)) budget--
+        end += char.length
+      }
+      line = full.slice(0, end)
+      if (!line) return
+    }
+    const lineWidth = measure.measureText(full).width
+    const x =
+      reveal === Infinity
+        ? style.align === 'left'
+          ? pad
+          : style.align === 'right'
+            ? width - pad
+            : width / 2
+        : style.align === 'left'
+          ? pad
+          : style.align === 'right'
+            ? width - pad - lineWidth
+            : (width - lineWidth) / 2
     const y = pad + lineHeight * (i + 0.5)
     if (style.shadowBlur > 0 || style.shadowOffset[0] !== 0 || style.shadowOffset[1] !== 0) {
       ctx.shadowColor = style.shadowColor

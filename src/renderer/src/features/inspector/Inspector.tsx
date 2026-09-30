@@ -438,6 +438,41 @@ function TextSection({ clip }: { clip: Extract<Clip, { type: 'text' | 'caption' 
               }
             />
           </Row>
+          <Row label="Type on">
+            <Select
+              value={clip.reveal?.mode ?? 'none'}
+              onChange={(e) => {
+                const mode = e.target.value
+                editClips([clip.id], 'Change type-on', (c) => {
+                  if (c.type !== 'text') return
+                  if (mode === 'none') delete c.reveal
+                  else c.reveal = { mode: mode as 'letters' | 'words', seconds: c.reveal?.seconds ?? 1.5 }
+                })
+              }}
+            >
+              <option value="none">Off</option>
+              <option value="letters">Letter by letter</option>
+              <option value="words">Word by word</option>
+            </Select>
+            {clip.reveal && (
+              <NumberInput
+                label="Type-on duration"
+                value={clip.reveal.seconds}
+                min={0.1}
+                max={60}
+                step={0.1}
+                precision={1}
+                suffix=" s"
+                className="w-20 flex-none"
+                {...scrub}
+                onChange={(v) =>
+                  editClips([clip.id], 'Change type-on', (c) => {
+                    if (c.type === 'text' && c.reveal) c.reveal.seconds = Math.max(0.1, v)
+                  })
+                }
+              />
+            )}
+          </Row>
         </>
       ) : (
         <CaptionStyle />

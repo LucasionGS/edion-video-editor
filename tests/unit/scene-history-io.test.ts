@@ -14,6 +14,7 @@ import {
   splitClip,
   upsertKeyframe,
   createAdjustmentClip,
+  revealedLetters,
   findClip
 } from '@core/index'
 import type { Layer, Project, TransitionNode } from '@core/index'
@@ -164,5 +165,22 @@ describe('adjustment layers', () => {
     expect(project.tracks[0]!.clips[0]!.id).toBe(again.id)
     const right = splitClip(project, adjustment.id, 50)!
     expect(findClip(project, right)!.clip.type).toBe('adjustment')
+  })
+})
+
+describe('type-on text', () => {
+  it('reveals letters or whole words over time, ignoring spaces', () => {
+    const clip = createTextClip(0, 30, 'Hello big world')
+    expect(revealedLetters(clip, 10, 30)).toBeUndefined()
+    clip.reveal = { mode: 'letters', seconds: 1 }
+    expect(revealedLetters(clip, 0, 30)).toBe(0)
+    expect(revealedLetters(clip, 15, 30)).toBe(6)
+    expect(revealedLetters(clip, 30, 30)).toBe(13)
+    expect(revealedLetters(clip, 99, 30)).toBe(13)
+    clip.reveal = { mode: 'words', seconds: 1 }
+    expect(revealedLetters(clip, 9, 30)).toBe(0)
+    expect(revealedLetters(clip, 10, 30)).toBe(5)
+    expect(revealedLetters(clip, 20, 30)).toBe(8)
+    expect(revealedLetters(clip, 30, 30)).toBe(13)
   })
 })

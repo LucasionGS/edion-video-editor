@@ -570,8 +570,11 @@ export class Compositor {
     // Quantised so an animated scale re-rasterises a handful of times, not every frame.
     const quality = Math.min(4, Math.max(0.25, Math.ceil(zoom * this.scale * 4) / 4))
     if (clip.type === 'text') {
-      const key = `t:${quality}:${clip.boxWidth}:${clip.text}:${JSON.stringify(clip.style)}`
-      return this.rasterTexture(key, () => rasterizeText(clip.text, clip.style, clip.boxWidth, quality))
+      const reveal = layer.reveal ?? Infinity
+      const key = `t:${quality}:${reveal}:${clip.boxWidth}:${clip.text}:${JSON.stringify(clip.style)}`
+      return this.rasterTexture(key, () =>
+        rasterizeText(clip.text, clip.style, clip.boxWidth, quality, reveal)
+      )
     }
     const key = `s:${quality}:${clip.shape}:${clip.size.join('x')}:${clip.fill}:${clip.strokeColor}:${clip.strokeWidth}:${clip.cornerRadius}`
     return this.rasterTexture(key, () => rasterizeShape(clip, quality))

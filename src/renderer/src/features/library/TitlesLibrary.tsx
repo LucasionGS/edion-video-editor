@@ -57,6 +57,16 @@ const TITLES: TitlePreset[] = [
     }
   },
   {
+    name: 'Typewriter',
+    sample: 'Typing…',
+    apply: (c, { height }) => {
+      c.style.fontSize = Math.round(height * 0.07)
+      c.style.fontFamily = 'monospace'
+      c.style.fontWeight = 500
+      c.reveal = { mode: 'letters', seconds: 1.5 }
+    }
+  },
+  {
     name: 'Label',
     sample: 'Label',
     apply: (c, { height }) => {
