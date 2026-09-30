@@ -19,6 +19,9 @@ Electron video editor. Read `README.md` → Architecture first.
 - `src/core` stays pure (no DOM, Electron or Node imports) and every behaviour change there gets a unit test.
 - All project mutations go through `edit()` in `src/renderer/src/store/editor.ts` using ops from `src/core/ops`; wrap drags in `beginTransaction` / `commitTransaction` so they undo as one step.
 - Preview and export must keep sharing `SceneRenderer` + `Compositor`. Anything visual is added to `evaluateScene` / the compositor, never to only one of the two paths.
-- New effects: add the spec to `src/core/effects/registry.ts` and a fragment shader with matching uniform names to `engine/compositor/shaders.ts`. Transition order in the registry is the shader's `u_type`.
+- New effects: add the spec to `src/core/effects/registry.ts` and a fragment shader with matching uniform names to `engine/compositor/shaders.ts` (avoid GLSL reserved words such as `filter` as param names). Params marked `pixels` are scaled to the render resolution, `options` params render as choices. Multi-pass effects (blur, glow, drop shadow, LUT, blurred background) are special-cased in `Compositor.applyEffects` / `renderLayer`. Transition order in the registry is the shader's `u_type`, so only append.
+- Audio effects live in `AUDIO_EFFECTS` and are built from Web Audio nodes in `engine/audio/mixer.ts`, which both live playback and the export mix use.
+- Anything that maps timeline frames to source time goes through the helpers in `core/ops/query.ts` (`sourceOffset`, `sourceTimeAt`, `handleFrames`, `framesForOffset`): they account for speed ramps, reversed clips, frame holds and compound clips.
+- Clips can live inside compound clips' sequences (`project.sequences`); bookkeeping over all clips uses `allTracks(project)`, and the compositor renders nested scenes with a target set per depth.
 - IPC is typed in `src/shared/ipc.ts`; add the channel there, then main handler, then preload bridge.
 - Prettier reformats on `pnpm format`; match its output when patching files.
