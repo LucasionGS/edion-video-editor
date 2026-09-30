@@ -16,6 +16,12 @@ export function attachPlayer(canvas: HTMLCanvasElement): () => void {
     {
       getProject: () => useEditor.getState().project,
       getPlayhead: () => useEditor.getState().playhead,
+      getLoop: () => {
+        const { loop, project } = useEditor.getState()
+        if (!loop) return null
+        const { range } = project
+        return range ? { from: range.in, to: range.out } : { from: 0, to: projectDuration(project) }
+      },
       onFrame: (frame) => useEditor.setState({ playhead: frame }),
       onStop: () => useEditor.setState({ playing: false })
     }

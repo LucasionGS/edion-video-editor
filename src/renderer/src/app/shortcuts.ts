@@ -14,7 +14,9 @@ import {
   rippleTrimToPlayhead,
   selectAll,
   setRangeEdge,
+  nudgeSelection,
   splitAtPlayhead,
+  toggleDisabled,
   toggleLink
 } from '@/store/commands'
 import { redo, select, setZoom, TOOLS, undo, useEditor } from '@/store/editor'
@@ -100,6 +102,20 @@ export const COMMANDS: Command[] = [
     keys: ['shift+m'],
     run: () => jumpTo(nextMarker(useEditor.getState().project, useEditor.getState().playhead, 1))
   },
+  {
+    id: 'loop',
+    label: 'Loop playback',
+    group: 'Playback',
+    keys: ['alt+l'],
+    run: () => useEditor.setState((s) => ({ loop: !s.loop }))
+  },
+  {
+    id: 'fullscreen',
+    label: 'Full-screen viewer',
+    group: 'Playback',
+    keys: ['f'],
+    run: () => useShortcutState.getState().onFullscreen?.()
+  },
   { id: 'start', label: 'Go to start', group: 'Playback', keys: ['home'], run: () => seek(0) },
   { id: 'end', label: 'Go to end', group: 'Playback', keys: ['end'], run: seekToEnd },
 
@@ -132,6 +148,41 @@ export const COMMANDS: Command[] = [
   },
   { id: 'duplicate', label: 'Duplicate', group: 'Editing', keys: ['ctrl+d'], run: duplicateSelection },
   { id: 'selectAll', label: 'Select all', group: 'Editing', keys: ['ctrl+a'], run: selectAll },
+  {
+    id: 'disable',
+    label: 'Enable / disable clips',
+    group: 'Editing',
+    keys: ['shift+e'],
+    run: toggleDisabled
+  },
+  {
+    id: 'nudgeLeft',
+    label: 'Nudge clips left',
+    group: 'Editing',
+    keys: ['alt+arrowleft'],
+    run: () => nudgeSelection(-1)
+  },
+  {
+    id: 'nudgeRight',
+    label: 'Nudge clips right',
+    group: 'Editing',
+    keys: ['alt+arrowright'],
+    run: () => nudgeSelection(1)
+  },
+  {
+    id: 'nudgeLeft10',
+    label: 'Nudge clips left 10 frames',
+    group: 'Editing',
+    keys: ['shift+alt+arrowleft'],
+    run: () => nudgeSelection(-10)
+  },
+  {
+    id: 'nudgeRight10',
+    label: 'Nudge clips right 10 frames',
+    group: 'Editing',
+    keys: ['shift+alt+arrowright'],
+    run: () => nudgeSelection(10)
+  },
   { id: 'link', label: 'Link / unlink clips', group: 'Editing', keys: ['ctrl+l'], run: toggleLink },
   {
     id: 'deselect',
@@ -222,9 +273,12 @@ export const COMMANDS: Command[] = [
 export const useShortcutState = create<{
   overrides: Record<string, string[]>
   onExport: (() => void) | null
+  /** Set by the viewer, which owns the element that goes full screen. */
+  onFullscreen: (() => void) | null
 }>(() => ({
   overrides: {},
-  onExport: null
+  onExport: null,
+  onFullscreen: null
 }))
 
 export const keysFor = (command: Command, overrides: Record<string, string[]>): string[] =>

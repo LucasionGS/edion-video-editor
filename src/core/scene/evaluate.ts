@@ -179,14 +179,20 @@ export function evaluateScene(project: Project, frame: number): Scene {
     const track = project.tracks[i]!
     if (track.hidden) continue
     if (track.kind === 'caption') {
-      const caption = track.clips.find((c) => frame >= c.start && frame < clipEnd(c))
+      const caption = track.clips.find((c) => frame >= c.start && frame < clipEnd(c) && !c.disabled)
       if (caption?.type === 'caption') scene.captions.push(caption)
       continue
     }
     if (track.kind !== 'video') continue
 
     const active = transitionAt(track, frame)
-    if (active && isVisualClip(active.from) && isVisualClip(active.to)) {
+    if (
+      active &&
+      isVisualClip(active.from) &&
+      isVisualClip(active.to) &&
+      !active.from.disabled &&
+      !active.to.disabled
+    ) {
       const { transition, from, to } = active
       const begin = to.start - transition.duration / 2
       scene.nodes.push({
@@ -198,7 +204,7 @@ export function evaluateScene(project: Project, frame: number): Scene {
       })
       continue
     }
-    const clip = track.clips.find((c) => frame >= c.start && frame < clipEnd(c))
+    const clip = track.clips.find((c) => frame >= c.start && frame < clipEnd(c) && !c.disabled)
     if (clip && isVisualClip(clip)) scene.nodes.push(resolveLayer(project, clip, frame))
     else if (clip?.type === 'adjustment') {
       const localFrame = frame - clip.start
@@ -235,7 +241,7 @@ export function collectAudioSources(project: Project): AudioSource[] {
   for (const track of project.tracks) {
     if (track.muted || (anySolo && !track.solo)) continue
     for (const clip of track.clips) {
-      if (!isAudibleClip(clip)) continue
+      if (!isAudibleClip(clip) || clip.disabled) continue
       // Frame holds and speed-ramped clips are silent.
       if (clip.type === 'video' && (clip.audioMuted || clip.hold || hasRamp(clip))) continue
       const into = track.transitions.find((t) => t.rightClipId === clip.id)

@@ -14,6 +14,7 @@ import {
   findMedia,
   isAudibleClip,
   normalizationGain,
+  nudgeClips,
   relinkCopies,
   insertClipAuto,
   insertFrameHold,
@@ -321,4 +322,26 @@ export async function splitAtScenes(clipId: Id): Promise<void> {
   let cuts = 0
   edit('Split at scene changes', (draft) => void (cuts = splitAtSourceTimes(draft, clipId, times)))
   toast(cuts ? `Split into ${cuts + 1} shots.` : 'No scene changes found.', cuts ? 'success' : 'info')
+}
+
+/** Switches the selected clips off (or back on): they stay on the timeline but are not seen or heard. */
+export function toggleDisabled(): void {
+  const { project, selection } = state()
+  const clips = editTargets(selection).flatMap((id) => findClip(project, id)?.clip ?? [])
+  if (clips.length === 0) return
+  const disable = clips.some((c) => !c.disabled)
+  edit(disable ? 'Disable clips' : 'Enable clips', (draft) => {
+    for (const clip of clips) {
+      const target = findClip(draft, clip.id)?.clip
+      if (!target) continue
+      if (disable) target.disabled = true
+      else delete target.disabled
+    }
+  })
+}
+
+/** Moves the selection (with linked clips) by a few frames, if there is room. */
+export function nudgeSelection(frames: number): void {
+  const targets = editTargets(state().selection)
+  if (targets.length > 0) edit('Nudge clips', (draft) => void nudgeClips(draft, targets, frames))
 }

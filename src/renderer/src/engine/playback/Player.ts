@@ -8,6 +8,8 @@ const PREROLL_SECONDS = 0.75
 export interface PlayerHost {
   getProject(): Project
   getPlayhead(): number
+  /** When set, playback wraps around inside this span instead of stopping at the end. */
+  getLoop?(): { from: number; to: number } | null
   /** Called every displayed frame during playback. */
   onFrame(frame: number): void
   onStop(): void
@@ -52,7 +54,9 @@ export class Player {
     const duration = projectDuration(project)
     if (duration === 0) return this.host.onStop()
     let from = this.host.getPlayhead()
-    if (from >= duration - 1) from = 0
+    const loop = this.host.getLoop?.()
+    if (loop && (from < loop.from || from >= loop.to - 1)) from = loop.from
+    else if (from >= duration - 1) from = 0
     this.playing = true
     this.host.onFrame(from)
     await this.audio.start(project, from / project.settings.fps)
@@ -80,6 +84,13 @@ export class Player {
 
     if (this.playing) {
       const frame = Math.floor(this.audio.time * fps + 1e-6)
+      const loop = this.host.getLoop?.()
+      if (loop && frame >= loop.to) {
+        this.lastFrame = -1
+        this.host.onFrame(loop.from)
+        void this.audio.start(project, loop.from / fps)
+        return
+      }
       if (frame >= projectDuration(project)) {
         this.host.onFrame(projectDuration(project))
         return this.pause()

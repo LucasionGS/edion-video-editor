@@ -10,6 +10,7 @@ import {
   Clapperboard,
   ClipboardPaste,
   Copy,
+  EyeOff,
   CopyPlus,
   FlipHorizontal2,
   FlipVertical2,
@@ -70,6 +71,7 @@ import {
   selectAll,
   splitAtPlayhead,
   splitAtScenes,
+  toggleDisabled,
   toggleLink
 } from './commands'
 import { openDialog, promptText } from './dialogs'
@@ -458,6 +460,12 @@ export function clipMenuItems(): MenuItem[] {
   }
   items.push(
     { type: 'separator' },
+    {
+      label: clips.some((c) => !c.disabled) ? 'Disable' : 'Enable',
+      icon: <EyeOff size={13} />,
+      shortcut: shortcut('disable'),
+      onSelect: toggleDisabled
+    },
     {
       label: `Delete${count}`,
       icon: <Trash2 size={13} />,

@@ -508,3 +508,15 @@ export function insertEdit(
     return clip.id
   })
 }
+
+/**
+ * Moves clips by `delta` frames if every one of them fits there (nothing is pushed or overwritten).
+ * Returns whether they moved.
+ */
+export function nudgeClips(project: Project, clipIds: readonly Id[], delta: number): boolean {
+  const moves = clipIds.flatMap((id) => {
+    const found = findClip(project, id)
+    return found ? [{ clipId: id, trackId: found.track.id, start: found.clip.start + delta }] : []
+  })
+  return moves.length > 0 && moveClips(project, moves)
+}

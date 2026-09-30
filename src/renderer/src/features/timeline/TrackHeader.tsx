@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { moveTrack, removeTrack } from '@core/index'
 import type { Track } from '@core/index'
-import { edit, useEditor } from '@/store/editor'
+import { beginTransaction, commitTransaction, edit, rollbackTransaction, useEditor } from '@/store/editor'
 import { confirm } from '@/store/feedback'
 import { IconButton } from '@/ui/IconButton'
 import { startDrag } from './drag'
@@ -127,8 +127,37 @@ export function TrackHeader({ track }: { track: Track }) {
       >
         {track.locked ? <Lock size={13} /> : <LockOpen size={13} />}
       </IconButton>
+      <div
+        aria-label={`Resize ${track.name}`}
+        title="Drag to resize the track"
+        className="absolute inset-x-0 -bottom-1 z-10 h-2 cursor-ns-resize"
+        onPointerDown={(e) => e.button === 0 && beginTrackResize(e, track.id, track.height)}
+      />
     </div>
   )
+}
+
+const MIN_TRACK_HEIGHT = 30
+const MAX_TRACK_HEIGHT = 220
+
+/** Drags a track's bottom edge; the whole drag is one undo step. */
+function beginTrackResize(event: React.PointerEvent, trackId: string, height: number): void {
+  event.stopPropagation()
+  startDrag(event, {
+    threshold: 1,
+    onStart: () => beginTransaction('Resize track'),
+    onMove: (_dx, dy) =>
+      edit('Resize track', (draft) => {
+        const track = draft.tracks.find((t) => t.id === trackId)
+        if (track)
+          track.height = Math.round(Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, height + dy)))
+      }),
+    onEnd: (moved, cancelled) => {
+      if (!moved) return
+      if (cancelled) rollbackTransaction()
+      else commitTransaction()
+    }
+  })
 }
 
 /** Drags a track header up or down; the drop position is the gap nearest the pointer. */

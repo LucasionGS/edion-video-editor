@@ -4,8 +4,10 @@ import {
   ChevronFirst,
   ChevronLast,
   Grid3x3,
+  Maximize,
   Pause,
   Play,
+  Repeat,
   StepBack,
   StepForward,
   Volume2,
@@ -22,6 +24,7 @@ import {
 } from '@/engine/playback/session'
 import { setTimeDisplay, useEditor } from '@/store/editor'
 import { IconButton } from '@/ui/IconButton'
+import { useShortcutState } from '@/app/shortcuts'
 import { AudioMeter } from './AudioMeter'
 import { Gizmo } from './Gizmo'
 import { GUIDE_MODES, Guides, type GuideMode } from './Guides'
@@ -43,6 +46,15 @@ export function Viewer() {
   const [muted, setMuted] = useState(false)
   const [guides, setGuides] = useState<GuideMode>('off')
   const [scopes, setScopes] = useState(false)
+  const loop = useEditor((s) => s.loop)
+  useEffect(() => {
+    const toggle = (): void => {
+      if (document.fullscreenElement) void document.exitFullscreen()
+      else void stageRef.current?.requestFullscreen()
+    }
+    useShortcutState.setState({ onFullscreen: toggle })
+    return () => useShortcutState.setState({ onFullscreen: null })
+  }, [])
   const stageRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState({ width: 0, height: 0 })
 
@@ -79,7 +91,7 @@ export function Viewer() {
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col bg-bg">
-      <div ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden">
+      <div ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden bg-bg">
         <div
           className="absolute"
           style={{ left: fitted.left, top: fitted.top, width: fitted.width, height: fitted.height }}
@@ -90,7 +102,7 @@ export function Viewer() {
         </div>
         {scopes && <Scopes />}
       </div>
-      <footer className="@container grid h-11 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-t border-line bg-surface px-3">
+      <footer className="@container grid h-11 min-w-0 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-t border-line bg-surface px-3">
         <Timecode fps={fps} />
         <div className="flex items-center justify-center gap-0.5">
           <IconButton label="Go to start (Home)" onClick={() => seek(0)}>
@@ -118,9 +130,19 @@ export function Viewer() {
           <IconButton label="Go to end (End)" onClick={seekToEnd}>
             <ChevronLast size={16} />
           </IconButton>
+          <IconButton
+            label="Loop playback (Alt+L): the in/out range, or the whole timeline"
+            active={loop}
+            onClick={() => useEditor.setState({ loop: !loop })}
+          >
+            <Repeat size={15} />
+          </IconButton>
         </div>
-        <div className="flex items-center justify-end gap-2">
-          <AudioMeter />
+        <div className="flex min-w-0 items-center justify-end gap-1">
+          {/* The meter gives way first when the viewer gets narrow. */}
+          <span className="contents @max-[760px]:hidden">
+            <AudioMeter />
+          </span>
           <IconButton label="Video scopes" active={scopes} onClick={() => setScopes(!scopes)}>
             <Activity size={15} />
           </IconButton>
@@ -138,6 +160,9 @@ export function Viewer() {
           </IconButton>
           <IconButton label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={() => setMuted(!muted)}>
             {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </IconButton>
+          <IconButton label="Full screen (F)" onClick={() => useShortcutState.getState().onFullscreen?.()}>
+            <Maximize size={15} />
           </IconButton>
           <select
             aria-label="Preview quality"
@@ -168,12 +193,12 @@ function Timecode({ fps }: { fps: number }) {
   return (
     <button
       type="button"
-      className="flex items-baseline gap-1.5 justify-self-start rounded px-1 py-0.5 font-mono text-xs whitespace-nowrap tabular-nums hover:bg-hover"
+      className="flex min-w-0 items-baseline gap-1.5 justify-self-start overflow-hidden rounded px-1 py-0.5 font-mono text-xs whitespace-nowrap tabular-nums hover:bg-hover"
       onClick={() => setTimeDisplay(next.value)}
       title={`Showing: ${TIME_DISPLAYS[index]?.label}. Click for: ${next.label}`}
     >
       <span className="text-fg">{formatPosition(playhead, fps, display)}</span>
-      <span className="text-faint">/ {formatPosition(duration, fps, display)}</span>
+      <span className="text-faint @max-[600px]:hidden">/ {formatPosition(duration, fps, display)}</span>
       {/* The other two readings of the same position, so the units are never ambiguous. */}
       <span className="text-2xs text-faint @max-[640px]:hidden">
         {display === 'time'

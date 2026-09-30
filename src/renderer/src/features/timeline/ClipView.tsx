@@ -63,7 +63,7 @@ export const ClipView = memo(function ClipView({
   return (
     <div
       data-clip-id={clip.id}
-      className={`group/clip absolute top-0.5 overflow-hidden rounded-[5px] ${bodyCursor} ${locked ? 'opacity-60' : ''} ${
+      className={`group/clip absolute top-0.5 overflow-hidden rounded-[5px] ${bodyCursor} ${locked ? 'opacity-60' : ''} ${clip.disabled ? 'opacity-35 grayscale' : ''} ${
         selected
           ? 'z-[3] ring-2 ring-white'
           : partnerSelected

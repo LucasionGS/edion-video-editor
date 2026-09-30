@@ -37,6 +37,8 @@ export interface EditorState {
   ripple: boolean
   /** Selecting, moving, trimming or deleting a linked clip includes its partners. */
   linkedSelection: boolean
+  /** Playback wraps around the in/out range (or the whole timeline). */
+  loop: boolean
   /** Timeline zoom in pixels per frame. */
   zoom: number
   clipboard: Array<{ clip: Clip; trackId: Id }>
@@ -62,6 +64,7 @@ export const useEditor = create<EditorState>(() => ({
   timeDisplay: 'time',
   ripple: false,
   linkedSelection: true,
+  loop: false,
   zoom: 2,
   clipboard: [],
   missingMedia: []

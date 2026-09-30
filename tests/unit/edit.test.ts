@@ -2,17 +2,20 @@ import { describe, expect, it } from 'vitest'
 import {
   addTrack,
   clipEnd,
+  collectAudioSources,
   createCaptionClip,
   createTextClip,
   deleteClips,
   detachAudio,
   evaluate,
+  evaluateScene,
   findClip,
   insertClip,
   insertClipAuto,
   moveClips,
   moveTrack,
   nearestFreeStart,
+  nudgeClips,
   pasteClips,
   projectDuration,
   setClipSpeed,
@@ -221,5 +224,25 @@ describe('speed, paste, detach', () => {
     expect(audio.clip.start).toBe(30)
     expect(clips[0]!.audioMuted).toBe(true)
     expect(detachAudio(project, clips[0]!.id)).toBeNull()
+  })
+})
+
+describe('disable and nudge', () => {
+  it('leaves disabled clips out of the picture and the sound', () => {
+    const { project, clips } = projectWithClips([0, 30], [30, 30])
+    clips[0]!.disabled = true
+    expect(evaluateScene(project, 10).nodes).toHaveLength(0)
+    expect(evaluateScene(project, 40).nodes).toHaveLength(1)
+    expect(collectAudioSources(project).map((s) => s.clip.id)).toEqual([clips[1]!.id])
+  })
+
+  it('nudges only when there is room', () => {
+    const { project, clips } = projectWithClips([0, 30], [40, 30])
+    expect(nudgeClips(project, [clips[1]!.id], -5)).toBe(true)
+    expect(clips[1]!.start).toBe(35)
+    expect(nudgeClips(project, [clips[1]!.id], -6)).toBe(false)
+    expect(nudgeClips(project, [clips[0]!.id, clips[1]!.id], 3)).toBe(true)
+    expect([clips[0]!.start, clips[1]!.start]).toEqual([3, 38])
+    expect(nudgeClips(project, [clips[0]!.id], -4)).toBe(false)
   })
 })
