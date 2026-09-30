@@ -5,6 +5,7 @@ import { Inspector } from '@/features/inspector/Inspector'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 import { Welcome } from '@/features/welcome/Welcome'
 import { RemoveSilenceDialog } from '@/features/tools/RemoveSilenceDialog'
+import { CurveEditor } from '@/features/inspector/CurveEditor'
 import { useDialogs } from '@/store/dialogs'
 import { loadPresets } from '@/store/presets'
 import { PromptDialog } from '@/ui/PromptDialog'
@@ -115,5 +116,6 @@ function DialogHost() {
   const open = useDialogs((s) => s.open)
   if (open?.kind === 'removeSilence') return <RemoveSilenceDialog clipId={open.clipId} />
   if (open?.kind === 'prompt') return <PromptDialog key={open.title} {...open} />
+  if (open?.kind === 'curve') return <CurveEditor clipId={open.clipId} label={open.label} get={open.get} />
   return null
 }

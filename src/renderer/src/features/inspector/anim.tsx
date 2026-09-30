@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Diamond } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Diamond, Spline } from 'lucide-react'
 import type { Draft } from 'immer'
 import { evaluate, isAnimated, keyframeAt, removeKeyframe, setValueAt, upsertKeyframe } from '@core/index'
 import type { Animatable, AnimValue, Clip, Easing, Vec2 } from '@core/index'
 import { seek } from '@/engine/playback/session'
+import { openDialog } from '@/store/dialogs'
 import { beginTransaction, commitTransaction, useEditor } from '@/store/editor'
 import { editClips, localFrame } from '@/store/clipEdits'
 import { NumberInput } from '@/ui/NumberInput'
@@ -68,6 +69,18 @@ function KeyframeControls<T extends AnimValue>({
       >
         <Diamond size={11} fill={current ? 'currentColor' : 'none'} />
       </button>
+      {animated && (
+        <button
+          className="flex size-5 items-center justify-center rounded text-faint hover:bg-hover hover:text-fg"
+          aria-label={`Edit ${label} curve`}
+          title="Edit the curve"
+          onClick={() =>
+            openDialog({ kind: 'curve', clipId: clip.id, label, get: get as AnimGetter<AnimValue> })
+          }
+        >
+          <Spline size={12} />
+        </button>
+      )}
       {animated && (
         <button
           className="text-faint hover:text-fg disabled:opacity-25"

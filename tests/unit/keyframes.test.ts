@@ -7,7 +7,8 @@ import {
   removeKeyframe,
   setValueAt,
   splitAnimatable,
-  upsertKeyframe
+  upsertKeyframe,
+  easingBezier
 } from '@core/index'
 import type { Animatable, Vec2 } from '@core/index'
 
@@ -92,5 +93,17 @@ describe('animatable', () => {
     const right = splitAnimatable(left, 30)
     expect(left.keyframes).toHaveLength(2)
     expect(right).toEqual({ value: 100 })
+  })
+})
+
+describe('easing beziers', () => {
+  it('turns presets into control points', () => {
+    expect(easingBezier('linear')).toEqual([0, 0, 1, 1])
+    expect(easingBezier('easeInOut')).toEqual([0.42, 0, 0.58, 1])
+    expect(easingBezier('hold')).toBeNull()
+    expect(easingBezier({ bezier: [0.1, 0.9, 0.2, 1.3] })).toEqual([0.1, 0.9, 0.2, 1.3])
+  })
+  it('lets a custom bezier overshoot', () => {
+    expect(applyEasing({ bezier: [0.3, 1.8, 0.6, 1.2] }, 0.5)).toBeGreaterThan(1)
   })
 })

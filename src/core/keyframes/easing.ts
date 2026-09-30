@@ -41,3 +41,11 @@ export function applyEasing(easing: Easing, t: number): number {
   const [x1, y1, x2, y2] = typeof easing === 'string' ? PRESETS[easing] : easing.bezier
   return cubicBezier(x1, y1, x2, y2, t)
 }
+
+/** An easing as cubic-bezier control points (linear is a straight bezier); null for 'hold', which jumps. */
+export function easingBezier(easing: Easing): [number, number, number, number] | null {
+  if (easing === 'hold') return null
+  if (easing === 'linear') return [0, 0, 1, 1]
+  const points = typeof easing === 'string' ? PRESETS[easing] : easing.bezier
+  return [points[0], points[1], points[2], points[3]]
+}

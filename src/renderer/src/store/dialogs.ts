@@ -1,9 +1,16 @@
 import { create } from 'zustand'
-import type { Id } from '@core/index'
+import type { Draft } from 'immer'
+import type { Animatable, AnimValue, Clip, Id } from '@core/index'
 
 /** Dialogs opened from menus and commands; the App renders whichever one is open. */
 export type DialogRequest =
   | { kind: 'removeSilence'; clipId: Id }
+  | {
+      kind: 'curve'
+      clipId: Id
+      label: string
+      get: (clip: Clip | Draft<Clip>) => Animatable<AnimValue> | undefined
+    }
   | {
       kind: 'prompt'
       title: string
