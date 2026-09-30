@@ -11,7 +11,8 @@ import {
   paste,
   selectAll,
   setRangeEdge,
-  splitAtPlayhead
+  splitAtPlayhead,
+  toggleLink
 } from '@/store/commands'
 import { redo, select, setZoom, undo, useEditor } from '@/store/editor'
 import { newProject, openProject, saveProject } from '@/store/projectActions'
@@ -89,6 +90,7 @@ export const COMMANDS: Command[] = [
   { id: 'paste', label: 'Paste at playhead', group: 'Editing', keys: ['ctrl+v'], run: paste },
   { id: 'duplicate', label: 'Duplicate', group: 'Editing', keys: ['ctrl+d'], run: duplicateSelection },
   { id: 'selectAll', label: 'Select all', group: 'Editing', keys: ['ctrl+a'], run: selectAll },
+  { id: 'link', label: 'Link / unlink clips', group: 'Editing', keys: ['ctrl+l'], run: toggleLink },
   {
     id: 'deselect',
     label: 'Deselect / select tool',
@@ -113,6 +115,13 @@ export const COMMANDS: Command[] = [
     group: 'Timeline',
     keys: ['c'],
     run: () => useEditor.setState({ tool: 'razor' })
+  },
+  {
+    id: 'linkedSelection',
+    label: 'Toggle linked selection',
+    group: 'Timeline',
+    keys: ['shift+l'],
+    run: () => useEditor.setState((s) => ({ linkedSelection: !s.linkedSelection }))
   },
   {
     id: 'snapping',

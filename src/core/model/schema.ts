@@ -70,7 +70,14 @@ export const textStyleSchema = z.object({
   backgroundRadius: z.number()
 })
 
-const clipBase = { id, name: z.string(), start: frames, duration: frames.min(1) }
+const clipBase = {
+  id,
+  name: z.string(),
+  start: frames,
+  duration: frames.min(1),
+  /** Clips sharing a link id (a video and its detached audio) move, trim, split and delete together. */
+  linkId: id.optional()
+}
 const visual = {
   transform: transformSchema,
   blendMode: blendModeSchema,

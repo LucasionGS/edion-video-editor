@@ -4,13 +4,15 @@ import {
   deleteClips,
   findClip,
   insertClipAuto,
+  linkClips,
   pasteClips,
   removeTransition,
   setTransition,
-  splitClip
+  splitClip,
+  unlinkClips
 } from '@core/index'
 import type { Clip, Id, ProjectSettings } from '@core/index'
-import { edit, select, selectTransition, useEditor } from './editor'
+import { edit, editTargets, select, selectTransition, useEditor } from './editor'
 
 /** User-level commands shared by buttons, menus and keyboard shortcuts. */
 
@@ -18,12 +20,12 @@ const state = useEditor.getState
 
 /** Splits the selected clips under the playhead, or every unlocked clip under it when nothing is selected. */
 export function splitAtPlayhead(): void {
-  const { project, playhead, selection } = state()
+  const { project, playhead, selection, linkedSelection } = state()
   const targets: Id[] = selection.length
     ? selection
     : project.tracks.flatMap((t) => (t.locked ? [] : (clipAtFrame(t, playhead)?.id ?? [])))
   edit('Split clips', (draft) => {
-    for (const id of targets) splitClip(draft, id, playhead)
+    for (const id of targets) splitClip(draft, id, playhead, linkedSelection)
   })
 }
 
@@ -34,12 +36,13 @@ export function deleteSelection(ripple = state().ripple): void {
     return selectTransition(null)
   }
   if (selection.length === 0) return
-  edit(ripple ? 'Ripple delete' : 'Delete clips', (draft) => deleteClips(draft, selection, ripple))
+  const targets = editTargets(selection)
+  edit(ripple ? 'Ripple delete' : 'Delete clips', (draft) => deleteClips(draft, targets, ripple))
 }
 
 export function copySelection(): void {
   const { project, selection } = state()
-  const clipboard = selection.flatMap((id) => {
+  const clipboard = editTargets(selection).flatMap((id) => {
     const found = findClip(project, id)
     return found ? [{ clip: structuredClone(found.clip), trackId: found.track.id }] : []
   })
@@ -61,7 +64,7 @@ export function paste(): void {
 
 export function duplicateSelection(): void {
   const { project, selection } = state()
-  const clips = selection.flatMap((id) => {
+  const clips = editTargets(selection).flatMap((id) => {
     const found = findClip(project, id)
     return found ? [{ clip: found.clip, trackId: found.track.id }] : []
   })
@@ -70,6 +73,17 @@ export function duplicateSelection(): void {
   let ids: Id[] = []
   edit('Duplicate', (draft) => void (ids = pasteClips(draft, clips, end)))
   select(ids)
+}
+
+/** Links the selected clips, or unlinks them when they already form one group. */
+export function toggleLink(): void {
+  const { project, selection } = state()
+  if (selection.length === 0) return
+  const clips = selection.flatMap((id) => findClip(project, id)?.clip ?? [])
+  const linkId = clips[0]?.linkId
+  const oneGroup = linkId !== undefined && clips.every((c) => c.linkId === linkId)
+  if (oneGroup || clips.length === 1) edit('Unlink clips', (draft) => unlinkClips(draft, selection))
+  else edit('Link clips', (draft) => void linkClips(draft, selection))
 }
 
 export function selectAll(): void {

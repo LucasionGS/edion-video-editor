@@ -1,4 +1,5 @@
-import { clipEnd } from '@core/index'
+import { useShallow } from 'zustand/react/shallow'
+import { clipEnd, findClip } from '@core/index'
 import type { Track } from '@core/index'
 import { useEditor } from '@/store/editor'
 import { ClipView } from './ClipView'
@@ -12,6 +13,17 @@ const OVERSCAN = 400
 export function Lane({ track, width }: { track: Track; width: number }) {
   const zoom = useEditor((s) => s.zoom)
   const selection = useEditor((s) => s.selection)
+  // Link ids of the selected clips, so their partners (which edits will include) are highlighted too.
+  const selectedLinks = useEditor(
+    useShallow((s) =>
+      s.linkedSelection
+        ? s.selection.flatMap((id) => {
+            const linkId = findClip(s.project, id)?.clip.linkId
+            return linkId ? [linkId] : []
+          })
+        : []
+    )
+  )
   const missingMedia = useEditor((s) => s.missingMedia)
   const scrollLeft = useTimelineView((s) => s.scrollLeft)
   const viewportWidth = useTimelineView((s) => s.viewportWidth)
@@ -32,6 +44,7 @@ export function Lane({ track, width }: { track: Track; width: number }) {
             zoom={zoom}
             height={track.height}
             selected={selection.includes(clip.id)}
+            partnerSelected={clip.linkId !== undefined && selectedLinks.includes(clip.linkId)}
             locked={track.locked}
             missing={'mediaId' in clip && missingMedia.includes(clip.mediaId)}
           />

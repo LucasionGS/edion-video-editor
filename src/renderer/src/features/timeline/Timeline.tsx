@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import {
   Captions,
   Film,
+  Link2,
   MousePointer2,
   Music,
   Redo2,
@@ -235,6 +236,7 @@ function Guides() {
 function Toolbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
   const tool = useEditor((s) => s.tool)
   const ripple = useEditor((s) => s.ripple)
+  const linkedSelection = useEditor((s) => s.linkedSelection)
   const zoom = useEditor((s) => s.zoom)
   const canUndo = useEditor((s) => s.canUndo)
   const canRedo = useEditor((s) => s.canRedo)
@@ -296,6 +298,13 @@ function Toolbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | nu
       >
         Ripple
       </button>
+      <IconButton
+        label={`Linked selection ${linkedSelection ? 'on' : 'off'} (Shift+L): edits include linked clips`}
+        active={linkedSelection}
+        onClick={() => useEditor.setState({ linkedSelection: !linkedSelection })}
+      >
+        <Link2 size={15} />
+      </IconButton>
       {divider}
       <IconButton label="Add video track" onClick={() => edit('Add track', (d) => void addTrack(d, 'video'))}>
         <Film size={15} />

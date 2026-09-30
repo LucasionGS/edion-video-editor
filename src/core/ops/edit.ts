@@ -2,6 +2,7 @@ import { shiftKeyframes, splitAnimatable } from '../keyframes/animatable'
 import { createTrack, newId } from '../model/factory'
 import type { AudioClip, Clip, Id, MediaAsset, Project, Track, TrackKind } from '../model/types'
 import { isAudibleClip, isVisualClip, trackKindFor } from '../model/types'
+import { linkedPartners, pruneLinks, relinkCopies } from './link'
 import { animatablesOf, clipEnd, findClip, findTrack, isFree, sourceHandles } from './query'
 
 /**
@@ -78,6 +79,7 @@ export function removeMedia(project: Project, mediaId: Id): void {
     track.clips = track.clips.filter((c) => !('mediaId' in c) || c.mediaId !== mediaId)
     normalizeTrack(track)
   }
+  pruneLinks(project)
 }
 
 // ── Insert / move ─────────────────────────────────────────────────────────────────────────────────
@@ -144,21 +146,40 @@ export function moveClips(project: Project, moves: readonly ClipMove[]): boolean
 
 // ── Trim / split ──────────────────────────────────────────────────────────────────────────────────
 
-/** Trims an edge to `frame`, clamped by neighbours, source media and a 1-frame minimum. Returns the frame used. */
-export function trimClip(project: Project, clipId: Id, edge: 'start' | 'end', frame: number): number | null {
+/** Frames the given edge of a clip can be trimmed to: bounded by neighbours, source media and a 1-frame minimum. */
+export function trimRange(project: Project, clipId: Id, edge: 'start' | 'end'): [number, number] | null {
   const found = findClip(project, clipId)
-  if (!found || found.track.locked) return null
+  if (!found) return null
   const { clip, track, index } = found
   const { fps } = project.settings
   const speed = 'speed' in clip ? clip.speed : 1
   const handles = sourceHandles(project, clip)
   const handleFrames = (seconds: number): number =>
     seconds === Infinity ? Infinity : Math.floor((seconds * fps) / speed + EPSILON)
-
   if (edge === 'start') {
     const previous = track.clips[index - 1]
-    const min = Math.max(previous ? clipEnd(previous) : 0, clip.start - handleFrames(handles.head))
-    const next = Math.max(min, Math.min(frame, clipEnd(clip) - 1))
+    return [
+      Math.max(previous ? clipEnd(previous) : 0, clip.start - handleFrames(handles.head)),
+      clipEnd(clip) - 1
+    ]
+  }
+  const following = track.clips[index + 1]
+  return [
+    clip.start + 1,
+    Math.min(following ? following.start : Infinity, clipEnd(clip) + handleFrames(handles.tail))
+  ]
+}
+
+/** Trims an edge to `frame`, clamped by `trimRange`. Returns the frame used. */
+export function trimClip(project: Project, clipId: Id, edge: 'start' | 'end', frame: number): number | null {
+  const found = findClip(project, clipId)
+  const range = trimRange(project, clipId, edge)
+  if (!found || !range || found.track.locked) return null
+  const { clip, track } = found
+  const { fps } = project.settings
+  const next = Math.max(range[0], Math.min(frame, range[1]))
+  if (edge === 'start') {
+    const speed = 'speed' in clip ? clip.speed : 1
     const delta = next - clip.start
     if ('sourceIn' in clip) clip.sourceIn = Math.max(0, clip.sourceIn + (delta / fps) * speed)
     clip.duration -= delta
@@ -166,18 +187,68 @@ export function trimClip(project: Project, clipId: Id, edge: 'start' | 'end', fr
     // Keyframes are clip-relative; keep them at the same timeline position.
     for (const anim of animatablesOf(clip)) shiftKeyframes(anim, -delta)
   } else {
-    const following = track.clips[index + 1]
-    const max = Math.min(following ? following.start : Infinity, clipEnd(clip) + handleFrames(handles.tail))
-    const next = Math.min(max, Math.max(frame, clip.start + 1))
     clip.duration = next - clip.start
   }
   clampFades(clip)
   normalizeTrack(track)
-  return edge === 'start' ? clip.start : clipEnd(clip)
+  return next
 }
 
-/** Cuts a clip in two at a timeline frame. Returns the id of the new right-hand clip. */
-export function splitClip(project: Project, clipId: Id, frame: number): Id | null {
+/**
+ * Trims a clip together with the linked clips whose same edge lines up with it, so a video and its
+ * audio stay in sync. The group stops where its most constrained member has to stop.
+ */
+export function trimLinked(
+  project: Project,
+  clipId: Id,
+  edge: 'start' | 'end',
+  frame: number
+): number | null {
+  const found = findClip(project, clipId)
+  if (!found || found.track.locked) return null
+  const edgeOf = (clip: Clip): number => (edge === 'start' ? clip.start : clipEnd(clip))
+  const origin = edgeOf(found.clip)
+  const group = [
+    found.clip,
+    ...linkedPartners(project, clipId).filter(
+      (c) => edgeOf(c) === origin && !findClip(project, c.id)!.track.locked
+    )
+  ]
+  let [min, max] = [-Infinity, Infinity]
+  for (const clip of group) {
+    const range = trimRange(project, clip.id, edge)!
+    min = Math.max(min, range[0])
+    max = Math.min(max, range[1])
+  }
+  const target = Math.max(min, Math.min(frame, max))
+  let result: number | null = null
+  for (const clip of group) {
+    const used = trimClip(project, clip.id, edge, target)
+    if (clip.id === clipId) result = used
+  }
+  return result
+}
+
+/**
+ * Cuts a clip in two at a timeline frame, together with the linked clips under that frame. The right-hand
+ * parts are linked to each other. Returns the id of the new right-hand clip.
+ */
+export function splitClip(project: Project, clipId: Id, frame: number, linked = true): Id | null {
+  const partners = linked ? linkedPartners(project, clipId) : []
+  const right = splitOne(project, clipId, frame)
+  if (!right) return null
+  const rights = [right, ...partners.flatMap((p) => splitOne(project, p.id, frame) ?? [])]
+  const linkId = rights.length > 1 ? newId() : undefined
+  for (const id of rights) {
+    const clip = findClip(project, id)!.clip
+    if (linkId) clip.linkId = linkId
+    else delete clip.linkId
+  }
+  pruneLinks(project)
+  return right
+}
+
+function splitOne(project: Project, clipId: Id, frame: number): Id | null {
   const found = findClip(project, clipId)
   if (!found || found.track.locked) return null
   const { clip, track } = found
@@ -234,6 +305,7 @@ export function deleteClips(project: Project, clipIds: readonly Id[], ripple = f
     }
     normalizeTrack(track)
   }
+  pruneLinks(project)
 }
 
 /** Deep-copies a clip with fresh ids, ready to be inserted elsewhere. */
@@ -253,8 +325,12 @@ export function pasteClips(
 ): Id[] {
   if (clips.length === 0) return []
   const origin = Math.min(...clips.map((c) => c.clip.start))
-  return clips.map(({ clip, trackId }) => {
-    const copy = cloneClip(clip, atFrame + (clip.start - origin))
+  const copies = clips.map(({ clip, trackId }) => ({
+    copy: cloneClip(clip, atFrame + (clip.start - origin)),
+    trackId
+  }))
+  relinkCopies(copies.map((c) => c.copy))
+  return copies.map(({ copy, trackId }) => {
     insertClipAuto(project, copy, trackId)
     return copy.id
   })
@@ -262,8 +338,19 @@ export function pasteClips(
 
 // ── Speed / audio ─────────────────────────────────────────────────────────────────────────────────
 
-/** Changes playback speed, keeping the same source range (so the clip gets shorter or longer). */
+/**
+ * Changes playback speed, keeping the same source range (so the clip gets shorter or longer). Linked clips
+ * covering exactly the same span change with it, so sound stays in sync with picture.
+ */
 export function setClipSpeed(project: Project, clipId: Id, speed: number): void {
+  const found = findClip(project, clipId)
+  if (!found) return
+  const { start, duration } = found.clip
+  const partners = linkedPartners(project, clipId).filter((c) => c.start === start && c.duration === duration)
+  for (const id of [clipId, ...partners.map((p) => p.id)]) setSpeedOne(project, id, speed)
+}
+
+function setSpeedOne(project: Project, clipId: Id, speed: number): void {
   const found = findClip(project, clipId)
   if (!found || found.track.locked || !('speed' in found.clip)) return
   const { clip, track, index } = found
@@ -300,6 +387,8 @@ export function detachAudio(project: Project, clipId: Id): Id | null {
     fadeOut: video.fadeOut
   }
   video.audioMuted = true
+  video.linkId ??= newId()
+  audio.linkId = video.linkId
   insertClipAuto(project, audio)
   return audio.id
 }

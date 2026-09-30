@@ -1,11 +1,13 @@
 import {
   AlignCenterHorizontal,
   AlignCenterVertical,
+  AudioLines,
   ClipboardPaste,
   Copy,
   CopyPlus,
   FlipHorizontal2,
   FlipVertical2,
+  Link2,
   Maximize,
   Move,
   RotateCcw,
@@ -37,7 +39,8 @@ import {
   duplicateSelection,
   paste,
   selectAll,
-  splitAtPlayhead
+  splitAtPlayhead,
+  toggleLink
 } from './commands'
 import { edit, select, useEditor } from './editor'
 
@@ -227,15 +230,26 @@ export function clipMenuItems(): MenuItem[] {
       }
     )
   }
+  const linkId = clips[0]!.linkId
+  const oneGroup = linkId !== undefined && clips.every((c) => c.linkId === linkId)
+  items.push({ type: 'separator' })
   if (detachable.length > 0) {
-    items.push(
-      { type: 'separator' },
-      {
-        label: 'Detach audio',
-        icon: <Unlink size={13} />,
-        onSelect: () => edit('Detach audio', (draft) => detachable.forEach((c) => detachAudio(draft, c.id)))
-      }
-    )
+    items.push({
+      label: 'Detach audio',
+      icon: <AudioLines size={13} />,
+      onSelect: () => edit('Detach audio', (draft) => detachable.forEach((c) => detachAudio(draft, c.id)))
+    })
+  }
+  if (clips.some((c) => c.linkId)) {
+    items.push({
+      label: 'Unlink',
+      icon: <Unlink size={13} />,
+      shortcut: shortcut('link'),
+      onSelect: toggleLink
+    })
+  }
+  if (clips.length > 1 && !oneGroup) {
+    items.push({ label: 'Link', icon: <Link2 size={13} />, shortcut: shortcut('link'), onSelect: toggleLink })
   }
   items.push(
     { type: 'separator' },

@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { AudioLines, Captions, Film, ImageIcon, Shapes, Type } from 'lucide-react'
+import { AudioLines, Captions, Film, ImageIcon, Link2, Shapes, Type } from 'lucide-react'
 import type { Clip } from '@core/index'
 import { clipMenuItems, selectForMenu } from '@/store/clipMenu'
 import { useEditor } from '@/store/editor'
@@ -21,11 +21,21 @@ interface Props {
   zoom: number
   height: number
   selected: boolean
+  /** A clip linked to this one is selected, so edits will include this clip too. */
+  partnerSelected: boolean
   locked: boolean
   missing: boolean
 }
 
-export const ClipView = memo(function ClipView({ clip, zoom, height, selected, locked, missing }: Props) {
+export const ClipView = memo(function ClipView({
+  clip,
+  zoom,
+  height,
+  selected,
+  partnerSelected,
+  locked,
+  missing
+}: Props) {
   const { color, Icon } = look[clip.type]
   const width = Math.max(2, clip.duration * zoom)
   const frameAt = (e: React.PointerEvent | React.MouseEvent): number => {
@@ -37,7 +47,11 @@ export const ClipView = memo(function ClipView({ clip, zoom, height, selected, l
     <div
       data-clip-id={clip.id}
       className={`group/clip absolute top-0.5 overflow-hidden rounded-[5px] ${locked ? 'opacity-60' : ''} ${
-        selected ? 'z-[3] ring-2 ring-white' : 'z-[2] ring-1 ring-black/40 hover:ring-white/50'
+        selected
+          ? 'z-[3] ring-2 ring-white'
+          : partnerSelected
+            ? 'z-[3] ring-1 ring-white/80'
+            : 'z-[2] ring-1 ring-black/40 hover:ring-white/50'
       }`}
       style={{
         left: clip.start * zoom,
@@ -69,6 +83,9 @@ export const ClipView = memo(function ClipView({ clip, zoom, height, selected, l
         style={{ background: `color-mix(in srgb, ${color} 75%, transparent)` }}
       >
         {width > 28 && <Icon size={9} className="shrink-0 text-white/90" />}
+        {width > 42 && clip.linkId && (
+          <Link2 size={9} className="shrink-0 text-white/70" aria-label="Linked" />
+        )}
         {width > 56 && (
           <span className="truncate text-[10px] leading-none font-medium text-white/95">
             {missing ? 'Media missing · ' : ''}

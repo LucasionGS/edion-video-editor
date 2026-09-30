@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Draft } from 'immer'
-import { createProject, DEFAULT_SNAP_SETTINGS, History, TIME_DISPLAYS } from '@core/index'
+import { createProject, DEFAULT_SNAP_SETTINGS, History, TIME_DISPLAYS, withLinked } from '@core/index'
 import type { Clip, Id, Project, SnapSettings, TimeDisplay } from '@core/index'
 
 export type Tool = 'select' | 'razor'
@@ -25,6 +25,8 @@ export interface EditorState {
   snap: SnapSettings
   timeDisplay: TimeDisplay
   ripple: boolean
+  /** Selecting, moving, trimming or deleting a linked clip includes its partners. */
+  linkedSelection: boolean
   /** Timeline zoom in pixels per frame. */
   zoom: number
   clipboard: Array<{ clip: Clip; trackId: Id }>
@@ -49,6 +51,7 @@ export const useEditor = create<EditorState>(() => ({
   snap: DEFAULT_SNAP_SETTINGS,
   timeDisplay: 'time',
   ripple: false,
+  linkedSelection: true,
   zoom: 2,
   clipboard: [],
   missingMedia: []
@@ -118,6 +121,12 @@ export function select(ids: Id[], additive = false): void {
     else next.add(id)
   }
   set({ selection: [...next], selectedTransition: null })
+}
+
+/** The clips an edit of `ids` applies to: with linked selection on, their linked partners too. */
+export function editTargets(ids: readonly Id[]): Id[] {
+  const { project, linkedSelection } = get()
+  return linkedSelection ? withLinked(project, ids) : [...ids]
 }
 
 export function setPlayhead(frame: number): void {

@@ -8,13 +8,16 @@ import {
   snapPoints,
   snapThreshold,
   splitClip,
-  trimClip
+  trimClip,
+  trimLinked,
+  withLinked
 } from '@core/index'
 import type { ClipMove, Id } from '@core/index'
 import {
   beginTransaction,
   commitTransaction,
   edit,
+  editTargets,
   rollbackTransaction,
   select,
   useEditor
@@ -62,19 +65,24 @@ export function beginClipMove(event: ReactPointerEvent, clipId: Id): void {
   const wasSelected = state().selection.includes(clipId)
   if (!wasSelected) select([clipId], additive)
 
-  const origin = new Map<Id, { start: number; duration: number; trackIndex: number }>()
+  // Alt at press time moves only the selected clips, leaving linked partners behind.
+  const soloLinked = event.altKey
+  const origin = new Map<Id, { start: number; duration: number; trackIndex: number; followsLane: boolean }>()
   let anchorTrackIndex = 0
 
   startDrag(event, {
     onStart() {
       const { project, selection } = state()
-      for (const id of selection) {
+      const anchorKind = findClip(project, clipId)?.track.kind
+      for (const id of soloLinked ? selection : editTargets(selection)) {
         const found = findClip(project, id)
         if (!found || found.track.locked) continue
         origin.set(id, {
           start: found.clip.start,
           duration: found.clip.duration,
-          trackIndex: project.tracks.indexOf(found.track)
+          trackIndex: project.tracks.indexOf(found.track),
+          // Only clips on the same kind of track as the grabbed one change lanes with the pointer.
+          followsLane: found.track.kind === anchorKind
         })
       }
       anchorTrackIndex = origin.get(clipId)?.trackIndex ?? 0
@@ -98,7 +106,7 @@ export function beginClipMove(event: ReactPointerEvent, clipId: Id): void {
       const movesFor = (shift: number, by: number): ClipMove[] | null => {
         const moves: ClipMove[] = []
         for (const [id, o] of entries) {
-          const track = project.tracks[o.trackIndex + shift]
+          const track = project.tracks[o.trackIndex + (o.followsLane ? shift : 0)]
           if (!track) return null
           moves.push({ clipId: id, trackId: track.id, start: o.start + by })
         }
@@ -136,12 +144,19 @@ export function beginClipTrim(event: ReactPointerEvent, clipId: Id, edge: 'start
   const found = findClip(state().project, clipId)
   if (!found) return
   const originFrame = edge === 'start' ? found.clip.start : clipEnd(found.clip)
+  // Alt at press time trims just this clip (for split edits); otherwise lined-up linked clips follow.
+  const linked = state().linkedSelection && !event.altKey
+  const ignore = new Set(linked ? withLinked(state().project, [clipId]) : [clipId])
   startDrag(event, {
     onStart: () => beginTransaction('Trim clip'),
     onMove(dx, _dy, e) {
       let frame = originFrame + Math.round(dx / state().zoom)
-      frame += snapDelta([frame], new Set([clipId]), e.altKey)
-      edit('Trim clip', (draft) => void trimClip(draft, clipId, edge, frame))
+      frame += snapDelta([frame], ignore, e.altKey)
+      edit(
+        'Trim clip',
+        (draft) =>
+          void (linked ? trimLinked(draft, clipId, edge, frame) : trimClip(draft, clipId, edge, frame))
+      )
     },
     onEnd(moved, cancelled) {
       useTimelineView.setState({ snapGuide: null })
@@ -153,5 +168,5 @@ export function beginClipTrim(event: ReactPointerEvent, clipId: Id, edge: 'start
 }
 
 export function razorAt(clipId: Id, frame: number): void {
-  edit('Split clip', (draft) => void splitClip(draft, clipId, frame))
+  edit('Split clip', (draft) => void splitClip(draft, clipId, frame, state().linkedSelection))
 }

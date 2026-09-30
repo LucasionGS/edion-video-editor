@@ -36,6 +36,8 @@ export interface EdionApi {
   /** Puts text on the system clipboard (works without window focus, unlike the web clipboard API). */
   copyText(text: string): void
   platform: string
+  /** True in automated runs (`EDION_SCREENSHOT`), which expose `window.__edion` to debug scripts. */
+  automated: boolean
   ffmpeg: {
     info(): Promise<FfmpegInfo>
     probe(path: string): Promise<MediaProbe>

@@ -12,6 +12,7 @@ import { mediaApi } from './media'
 
 const api: EdionApi = {
   platform: process.platform,
+  automated: Boolean(process.env['EDION_SCREENSHOT']),
   onCloseRequested: (cb) => {
     const listener = (): void => cb()
     ipcRenderer.on(IPC.closeRequested, listener)
