@@ -50,6 +50,7 @@ export function insertFrameHold(project: Project, clipId: Id, frame: number, hol
   })
   delete hold.reversed
   delete hold.speedRamp
+  delete hold.animation
   delete hold.linkId
 
   const tracks = new Set([found.track])

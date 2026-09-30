@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  applyAnimationPreset,
+  setClipAnimation,
+  upsertKeyframe,
   applyTextLook,
   captureTextLook,
   createCaptionClip,
@@ -23,8 +24,14 @@ function styled() {
   clip.reveal = { mode: 'words', seconds: 1 }
   clip.transform.position.value = [0, 380]
   clip.effects.push({ id: 'x', type: 'glow', enabled: true, params: { radius: { value: 20 } } })
-  applyAnimationPreset(clip, 'in', 'slideUp', 15, { width: 1920, height: 1080 })
-  applyAnimationPreset(clip, 'out', 'fade', 15, { width: 1920, height: 1080 })
+  setClipAnimation(clip, 'in', 'slideUp', 15)
+  // Hand-made keyframes near both ends, as someone might add for a wiggle.
+  upsertKeyframe(clip.transform.opacity, 0, 0)
+  upsertKeyframe(clip.transform.opacity, 15, 1)
+  upsertKeyframe(clip.transform.opacity, 134, 1)
+  upsertKeyframe(clip.transform.opacity, 149, 0)
+  upsertKeyframe(clip.transform.position, 0, [0, 420])
+  upsertKeyframe(clip.transform.position, 15, [0, 380])
   return clip
 }
 
@@ -42,6 +49,7 @@ describe('text looks', () => {
     expect(other.reveal).toEqual({ mode: 'words', seconds: 1 })
     expect(other.effects).toHaveLength(1)
     expect(other.effects[0]!.id).not.toBe('x')
+    expect(other.animation).toEqual({ in: { preset: 'slideUp', frames: 15 } })
   })
 
   it('fits entrance and exit animations to the new length', () => {

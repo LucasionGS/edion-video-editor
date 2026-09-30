@@ -89,6 +89,12 @@ export function breakApart(project: Project, compoundId: Id): Id[] {
       const tail = Math.max(0, clipEnd(clip) - to)
       if (head) cutHead(project, clip, head)
       if (tail) cutTail(project, clip, tail)
+      // An edge that was cut off no longer has its entrance or exit.
+      if ((head || tail) && 'animation' in clip && clip.animation) {
+        if (head) delete clip.animation.in
+        if (tail) delete clip.animation.out
+        if (!clip.animation.in && !clip.animation.out) delete clip.animation
+      }
       clip.start = compound.start + Math.max(clip.start, from) - from
       delete clip.linkId
       const target = found.track.kind === trackKindFor(clip.type) && insertClip(project, found.track.id, clip)

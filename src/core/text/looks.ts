@@ -40,6 +40,7 @@ export interface TextLook {
   }
   blendMode: BlendMode
   effects: Array<Omit<Effect, 'id'>>
+  animation?: TextClip['animation']
 }
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
@@ -84,6 +85,7 @@ export function captureTextLook(clip: TextClip): TextLook {
       anchor: [anchor[0], anchor[1]]
     },
     blendMode: clip.blendMode,
+    ...(clip.animation ? { animation: copy(clip.animation) } : {}),
     effects: clip.effects.map(({ type, enabled, params, resource }) => ({
       type,
       enabled,
@@ -110,6 +112,8 @@ export function applyTextLook(clip: TextClip, look: TextLook): void {
   clip.transform = transform
   clip.blendMode = look.blendMode
   clip.effects = look.effects.map((e) => ({ ...copy(e), id: newId() }))
+  if (look.animation) clip.animation = copy(look.animation)
+  else delete clip.animation
 }
 
 /** A new text clip in a saved look. */

@@ -17,7 +17,8 @@ import {
 } from 'lucide-react'
 import {
   ANIMATION_PRESETS,
-  applyAnimationPreset,
+  DEFAULT_ANIMATION_SECONDS,
+  setClipAnimation,
   defaultTransform,
   detachAudio,
   EFFECTS,
@@ -1016,52 +1017,61 @@ async function chooseResource(extensions: string[]): Promise<string | null> {
 }
 
 function AnimateSection({ clip }: { clip: VisualClip }) {
-  const [presets, setPresets] = useState<{ in: AnimationPreset; out: AnimationPreset }>({
-    in: 'none',
-    out: 'none'
-  })
-  const [seconds, setSeconds] = useState(0.5)
-  const apply = (edge: 'in' | 'out', preset: AnimationPreset): void => {
-    setPresets((p) => ({ ...p, [edge]: preset }))
-    edit(`Animate ${edge}`, (draft) => {
-      const found = findClip(draft, clip.id)
-      if (found && isVisualClip(found.clip)) {
-        applyAnimationPreset(
-          found.clip,
-          edge,
-          preset,
-          Math.round(seconds * draft.settings.fps),
-          draft.settings
-        )
+  const fps = useEditor((s) => s.project.settings.fps)
+  const set = (edge: 'in' | 'out', preset: AnimationPreset, frames: number): void =>
+    editClips(
+      [clip.id],
+      preset === 'none' ? `Remove ${edge === 'in' ? 'entrance' : 'exit'}` : `Animate ${edge}`,
+      (c) => {
+        if (isVisualClip(c)) setClipAnimation(c, edge, preset, frames)
       }
-    })
-  }
+    )
   return (
     <Section title="Animate">
-      {(['in', 'out'] as const).map((edge) => (
-        <Row key={edge} label={edge === 'in' ? 'Entrance' : 'Exit'}>
-          <Select value={presets[edge]} onChange={(e) => apply(edge, e.target.value as AnimationPreset)}>
-            {ANIMATION_PRESETS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </Select>
-        </Row>
-      ))}
-      <Row label="Length">
-        <NumberInput
-          label="Animation length"
-          value={seconds}
-          min={0.1}
-          max={5}
-          step={0.05}
-          precision={2}
-          suffix=" s"
-          onChange={setSeconds}
-        />
-      </Row>
-      <p className="text-2xs text-faint">Presets write normal keyframes you can fine-tune afterwards.</p>
+      {(['in', 'out'] as const).map((edge) => {
+        const current = clip.animation?.[edge]
+        return (
+          <div key={edge} className="flex flex-col gap-1">
+            <Row label={edge === 'in' ? 'Entrance' : 'Exit'}>
+              <Select
+                value={current?.preset ?? 'none'}
+                onChange={(e) =>
+                  set(
+                    edge,
+                    e.target.value as AnimationPreset,
+                    current?.frames ?? Math.round(DEFAULT_ANIMATION_SECONDS * fps)
+                  )
+                }
+              >
+                {ANIMATION_PRESETS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </Select>
+            </Row>
+            {current && (
+              <Row label="Length">
+                <NumberInput
+                  label={`${edge === 'in' ? 'Entrance' : 'Exit'} length`}
+                  value={current.frames / fps}
+                  min={1 / fps}
+                  max={10}
+                  step={0.05}
+                  precision={2}
+                  suffix=" s"
+                  {...scrub}
+                  onChange={(v) => set(edge, current.preset, Math.max(1, Math.round(v * fps)))}
+                />
+              </Row>
+            )}
+          </div>
+        )
+      })}
+      <p className="text-2xs text-faint">
+        Entrances and exits stay at the clip&apos;s edges when you trim or split it, on top of its own
+        keyframes.
+      </p>
     </Section>
   )
 }

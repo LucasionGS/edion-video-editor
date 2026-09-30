@@ -293,6 +293,19 @@ function splitOne(project: Project, clipId: Id, frame: number): Id | null {
   if ('reversed' in clip && clip.reversed) shiftSource(project, clip, right.duration)
   else shiftSource(project, right, local)
   if (hasEffects(right)) for (const effect of right.effects) effect.id = newId()
+  // The entrance stays with the first part, the exit with the second.
+  if (isVisualClip(clip) && isVisualClip(right) && clip.animation) {
+    if (clip.animation.out) {
+      const { out: _exit, ...rest } = clip.animation
+      clip.animation = rest
+    }
+    if (right.animation?.in) {
+      const { in: _entrance, ...rest } = right.animation
+      right.animation = rest
+    }
+    for (const part of [clip, right])
+      if (part.animation && !part.animation.in && !part.animation.out) delete part.animation
+  }
 
   const leftAnims = animatablesOf(clip)
   const rightAnims = animatablesOf(right)

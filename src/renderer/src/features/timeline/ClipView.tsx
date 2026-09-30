@@ -12,7 +12,7 @@ import {
   SlidersHorizontal,
   Type
 } from 'lucide-react'
-import type { Clip } from '@core/index'
+import type { Clip, VisualClip } from '@core/index'
 import { clipMenuItems, selectForMenu } from '@/store/clipMenu'
 import { useEditor } from '@/store/editor'
 import { openContextMenu } from '@/ui/ContextMenu'
@@ -120,6 +120,7 @@ export const ClipView = memo(function ClipView({
           </span>
         )}
       </div>
+      {'animation' in clip && clip.animation && <AnimationRamps clip={clip} zoom={zoom} />}
       {!locked && width > 14 && (
         <>
           <div
@@ -135,3 +136,29 @@ export const ClipView = memo(function ClipView({
     </div>
   )
 })
+
+/** Shaded ramps at the clip's edges showing its entrance and exit, so they visibly move with trims. */
+function AnimationRamps({ clip, zoom }: { clip: VisualClip; zoom: number }) {
+  const half = Math.max(1, Math.floor(clip.duration / 2))
+  const width = (frames: number): number => Math.min(frames, half) * zoom
+  const { in: entrance, out: exit } = clip.animation ?? {}
+  const ramp = 'pointer-events-none absolute bottom-0 z-[3] h-[calc(100%-14px)] from-white/55 to-white/10'
+  return (
+    <>
+      {entrance && (
+        <div
+          className={`${ramp} left-0 bg-gradient-to-r`}
+          style={{ width: width(entrance.frames), clipPath: 'polygon(0 100%, 100% 0, 100% 100%)' }}
+          title={`Entrance: ${entrance.preset}`}
+        />
+      )}
+      {exit && (
+        <div
+          className={`${ramp} right-0 bg-gradient-to-l`}
+          style={{ width: width(exit.frames), clipPath: 'polygon(0 0, 100% 100%, 0 100%)' }}
+          title={`Exit: ${exit.preset}`}
+        />
+      )}
+    </>
+  )
+}

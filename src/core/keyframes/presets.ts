@@ -1,108 +1,121 @@
-import { evaluate } from './animatable'
-import type { Animatable, AnimValue, Easing, Vec2, VisualClip } from '../model/types'
+import { applyEasing } from './easing'
+import type { VisualClip } from '../model/types'
+
+/**
+ * Entrance and exit animations. They are stored on the clip (preset + length) rather than written as
+ * keyframes, and applied when the scene is evaluated, measured from the clip's current start and end:
+ * trimming, splitting or retiming a clip keeps them at its edges, and removing one always works. They
+ * act on top of the clip's own transform and keyframes.
+ */
 
 export type AnimationPreset =
   'none' | 'fade' | 'slideUp' | 'slideDown' | 'slideLeft' | 'slideRight' | 'zoom' | 'pop'
+export type ActivePreset = Exclude<AnimationPreset, 'none'>
 
 export const ANIMATION_PRESETS: ReadonlyArray<{ value: AnimationPreset; label: string }> = [
   { value: 'none', label: 'None' },
   { value: 'fade', label: 'Fade' },
+  { value: 'pop', label: 'Pop' },
+  { value: 'zoom', label: 'Zoom' },
   { value: 'slideUp', label: 'Slide up' },
   { value: 'slideDown', label: 'Slide down' },
   { value: 'slideLeft', label: 'Slide left' },
-  { value: 'slideRight', label: 'Slide right' },
-  { value: 'zoom', label: 'Zoom' },
-  { value: 'pop', label: 'Pop' }
+  { value: 'slideRight', label: 'Slide right' }
 ]
+
+/** Default length of a new entrance or exit, in seconds. */
+export const DEFAULT_ANIMATION_SECONDS = 0.5
 
 const SLIDE_DISTANCE = 0.12
 
-/** Replaces every keyframe inside [from, to] with a two-key ramp between `a` and `b`. */
-function ramp<T extends AnimValue>(
-  anim: Animatable<T>,
-  from: number,
-  to: number,
-  a: T,
-  b: T,
-  easing: Easing
-): void {
-  const kept = (anim.keyframes ?? []).filter((k) => k.frame < from || k.frame > to)
-  anim.keyframes = [
-    ...kept,
-    { frame: from, value: a, easing },
-    { frame: to, value: b, easing: 'linear' as Easing }
-  ].sort((x, y) => x.frame - y.frame)
-}
-
-/**
- * Writes an entrance (`edge: 'in'`) or exit animation as ordinary keyframes, so it can be tweaked
- * afterwards like any hand-made animation. 'none' removes keyframes in that part of the clip.
- */
-export function applyAnimationPreset(
+/** Sets (or with 'none', removes) the entrance or exit of a clip. */
+export function setClipAnimation(
   clip: VisualClip,
   edge: 'in' | 'out',
   preset: AnimationPreset,
-  frames: number,
-  canvas: { width: number; height: number }
+  frames: number
 ): void {
-  const length = Math.max(1, Math.min(frames, Math.floor(clip.duration / 2)))
-  const from = edge === 'in' ? 0 : clip.duration - 1 - length
-  const to = from + length
-  const { position, scale, opacity } = clip.transform
-  // The resting values are whatever the clip shows right after/before the animated part.
-  const restFrame = edge === 'in' ? to : from
-  const rest = {
-    position: evaluate(position, restFrame),
-    scale: evaluate(scale, restFrame),
-    opacity: evaluate(opacity, restFrame)
-  }
+  const animation = { ...clip.animation }
+  if (preset === 'none') delete animation[edge]
+  else animation[edge] = { preset, frames: Math.max(1, Math.round(frames)) }
+  if (animation.in || animation.out) clip.animation = animation
+  else delete clip.animation
+}
 
-  for (const anim of [position, scale, opacity] as Animatable<AnimValue>[]) {
-    anim.keyframes = anim.keyframes?.filter((k) => k.frame < from || k.frame > to)
-    if (anim.keyframes?.length === 0) delete anim.keyframes
-  }
-  position.value = rest.position
-  scale.value = rest.scale
-  opacity.value = rest.opacity
-  if (preset === 'none') return
+/** What an entrance/exit does to a layer at one frame: added to position, multiplying scale and opacity. */
+export interface AnimationEffect {
+  dx: number
+  dy: number
+  scale: number
+  opacity: number
+}
 
-  const easing: Easing = edge === 'in' ? 'easeOut' : 'easeIn'
-  const between = <T extends AnimValue>(anim: Animatable<T>, away: T, resting: T): void =>
-    edge === 'in' ? ramp(anim, from, to, away, resting, easing) : ramp(anim, from, to, resting, away, easing)
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t
 
-  between(opacity, 0, rest.opacity || 1)
-  const offset = (dx: number, dy: number): Vec2 => [
-    rest.position[0] + dx * canvas.width,
-    rest.position[1] + dy * canvas.height
-  ]
-  const scaled = (factor: number): Vec2 => [rest.scale[0] * factor, rest.scale[1] * factor]
+/**
+ * `t` runs from 0 (fully away) to 1 (at rest). Exits use the same curves with `t` counted back from the
+ * end, so an exit is the exact reverse of the entrance.
+ */
+function shape(preset: ActivePreset, t: number, canvas: { width: number; height: number }): AnimationEffect {
+  const e = applyEasing('easeOut', t)
+  const away = 1 - e
   switch (preset) {
-    case 'slideUp':
-      between(position, offset(0, SLIDE_DISTANCE), rest.position)
-      break
-    case 'slideDown':
-      between(position, offset(0, -SLIDE_DISTANCE), rest.position)
-      break
-    case 'slideLeft':
-      between(position, offset(SLIDE_DISTANCE, 0), rest.position)
-      break
-    case 'slideRight':
-      between(position, offset(-SLIDE_DISTANCE, 0), rest.position)
-      break
-    case 'zoom':
-      between(scale, scaled(0.6), rest.scale)
-      break
-    case 'pop':
-      if (edge === 'in') {
-        scale.keyframes = [
-          ...(scale.keyframes ?? []),
-          { frame: from, value: scaled(0.3), easing: 'easeOut' as Easing },
-          { frame: from + Math.round(length * 0.7), value: scaled(1.12), easing: 'easeInOut' as Easing },
-          { frame: to, value: rest.scale, easing: 'linear' as Easing }
-        ].sort((a, b) => a.frame - b.frame)
-      } else between(scale, scaled(0.3), rest.scale)
-      break
     case 'fade':
-      break
+      return { dx: 0, dy: 0, scale: 1, opacity: e }
+    case 'zoom':
+      return { dx: 0, dy: 0, scale: lerp(0.6, 1, e), opacity: e }
+    case 'pop': {
+      // From almost nothing, swelling past full size, then settling; a quick fade only at the very start.
+      const peak = 0.65
+      const scale =
+        t < peak
+          ? lerp(0.02, 1.12, applyEasing('easeOut', t / peak))
+          : lerp(1.12, 1, applyEasing('easeInOut', (t - peak) / (1 - peak)))
+      return { dx: 0, dy: 0, scale, opacity: Math.min(1, t / 0.2) }
+    }
+    case 'slideUp':
+      return { dx: 0, dy: away * SLIDE_DISTANCE * canvas.height, scale: 1, opacity: e }
+    case 'slideDown':
+      return { dx: 0, dy: -away * SLIDE_DISTANCE * canvas.height, scale: 1, opacity: e }
+    case 'slideLeft':
+      return { dx: away * SLIDE_DISTANCE * canvas.width, dy: 0, scale: 1, opacity: e }
+    case 'slideRight':
+      return { dx: -away * SLIDE_DISTANCE * canvas.width, dy: 0, scale: 1, opacity: e }
   }
+}
+
+const REST: AnimationEffect = { dx: 0, dy: 0, scale: 1, opacity: 1 }
+
+/**
+ * The combined effect of a clip's entrance and exit at a clip-relative frame. Each takes at most half the
+ * clip, so both fit however short it gets.
+ */
+export function animationAt(
+  clip: Pick<VisualClip, 'animation' | 'duration'>,
+  localFrame: number,
+  canvas: { width: number; height: number }
+): AnimationEffect {
+  const { animation, duration } = clip
+  if (!animation) return REST
+  const half = Math.max(1, Math.floor(duration / 2))
+  let effect = REST
+  const combine = (next: AnimationEffect): void => {
+    effect = {
+      dx: effect.dx + next.dx,
+      dy: effect.dy + next.dy,
+      scale: effect.scale * next.scale,
+      opacity: effect.opacity * next.opacity
+    }
+  }
+  if (animation.in) {
+    const frames = Math.min(animation.in.frames, half)
+    if (localFrame < frames) combine(shape(animation.in.preset, Math.max(0, localFrame / frames), canvas))
+  }
+  if (animation.out) {
+    const frames = Math.min(animation.out.frames, half)
+    // Counted so the last frame mirrors the first frame of an entrance (fully away).
+    const remaining = duration - 1 - localFrame
+    if (remaining < frames) combine(shape(animation.out.preset, Math.max(0, remaining / frames), canvas))
+  }
+  return effect
 }

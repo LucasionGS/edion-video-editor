@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
-  applyAnimationPreset,
+  setClipAnimation,
+  createProject,
+  evaluateScene,
+  insertClipAuto,
+  splitClip,
+  trimClip,
   clipsToCues,
   createTextClip,
   cuesToClips,
-  evaluate,
   parseSubtitles,
   serializeSrt,
   serializeVtt
 } from '@core/index'
+import type { Layer, Project } from '@core/index'
 
 const SRT = `1
 00:00:01,000 --> 00:00:03,500
@@ -54,38 +59,80 @@ describe('subtitles', () => {
   })
 })
 
-describe('animation presets', () => {
+describe('entrance and exit animations', () => {
   const canvas = { width: 1920, height: 1080 }
-  it('fades in from zero to the resting opacity', () => {
+  const projectWith = (clip: ReturnType<typeof createTextClip>) => {
+    const project = createProject()
+    insertClipAuto(project, clip)
+    return project
+  }
+  const layer = (project: Project, frame: number) => evaluateScene(project, frame).nodes[0] as Layer
+
+  it("fades in from nothing to the clip's own opacity, without writing keyframes", () => {
     const clip = createTextClip(0, 30)
-    applyAnimationPreset(clip, 'in', 'fade', 15, canvas)
-    expect(evaluate(clip.transform.opacity, 0)).toBe(0)
-    expect(evaluate(clip.transform.opacity, 15)).toBe(1)
-    expect(evaluate(clip.transform.opacity, 100)).toBe(1)
+    clip.transform.opacity.value = 0.8
+    setClipAnimation(clip, 'in', 'fade', 15)
+    expect(clip.transform.opacity.keyframes).toBeUndefined()
+    const project = projectWith(clip)
+    expect(layer(project, 0).transform.opacity).toBe(0)
+    expect(layer(project, 15).transform.opacity).toBeCloseTo(0.8)
   })
-  it('combines an entrance and an exit, and slides relative to the resting position', () => {
+
+  it('pops from almost nothing past full size, and pops out as the exact reverse', () => {
+    const clip = createTextClip(0, 30)
+    clip.duration = 90
+    setClipAnimation(clip, 'in', 'pop', 20)
+    setClipAnimation(clip, 'out', 'pop', 20)
+    const project = projectWith(clip)
+    const scale = (f: number) => layer(project, f).transform.scaleX
+    expect(scale(0)).toBeLessThan(0.05)
+    expect(Math.max(...[10, 11, 12, 13, 14].map(scale))).toBeGreaterThan(1.05)
+    expect(scale(20)).toBe(1)
+    for (const f of [0, 5, 12, 18]) expect(scale(89 - f)).toBeCloseTo(scale(f), 5)
+  })
+
+  it('stays at the edges when the clip is trimmed, and removing it always works', () => {
+    const clip = createTextClip(0, 30)
+    clip.duration = 150
+    setClipAnimation(clip, 'out', 'fade', 15)
+    const project = projectWith(clip)
+    trimClip(project, clip.id, 'end', 60)
+    // The exit now ends at the new end…
+    expect(layer(project, 59).transform.opacity).toBe(0)
+    expect(layer(project, 40).transform.opacity).toBe(1)
+    // …and "None" removes it however the clip was trimmed.
+    setClipAnimation(project.tracks[0]!.clips[0] as typeof clip, 'out', 'none', 15)
+    expect(layer(project, 59).transform.opacity).toBe(1)
+    expect((project.tracks[0]!.clips[0] as typeof clip).animation).toBeUndefined()
+  })
+
+  it("slides relative to the clip's own position", () => {
     const clip = createTextClip(0, 30)
     clip.transform.position.value = [100, 50]
-    applyAnimationPreset(clip, 'in', 'slideUp', 15, canvas)
-    applyAnimationPreset(clip, 'out', 'fade', 15, canvas)
-    expect(evaluate(clip.transform.position, 0)[1]).toBeGreaterThan(50)
-    expect(evaluate(clip.transform.position, 15)).toEqual([100, 50])
-    expect(evaluate(clip.transform.opacity, clip.duration - 1)).toBe(0)
-    expect(evaluate(clip.transform.opacity, 60)).toBe(1)
+    setClipAnimation(clip, 'in', 'slideUp', 15)
+    const project = projectWith(clip)
+    expect(layer(project, 0).transform.y).toBeCloseTo(50 + 0.12 * canvas.height)
+    expect(layer(project, 15).transform.y).toBe(50)
   })
-  it('replacing a preset leaves no stale keyframes, and none clears it', () => {
+
+  it('keeps the entrance on the first part of a split and the exit on the second', () => {
     const clip = createTextClip(0, 30)
-    applyAnimationPreset(clip, 'in', 'pop', 15, canvas)
-    applyAnimationPreset(clip, 'in', 'fade', 15, canvas)
-    expect(clip.transform.scale.keyframes).toBeUndefined()
-    applyAnimationPreset(clip, 'in', 'none', 15, canvas)
-    expect(clip.transform.opacity.keyframes).toBeUndefined()
-    expect(clip.transform.opacity.value).toBe(1)
+    clip.duration = 100
+    setClipAnimation(clip, 'in', 'pop', 10)
+    setClipAnimation(clip, 'out', 'fade', 10)
+    const project = projectWith(clip)
+    const right = splitClip(project, clip.id, 50)!
+    const parts = project.tracks[0]!.clips as Array<typeof clip>
+    expect(parts[0]!.animation).toEqual({ in: { preset: 'pop', frames: 10 } })
+    expect(parts.find((c) => c.id === right)!.animation).toEqual({ out: { preset: 'fade', frames: 10 } })
   })
-  it('never exceeds half of a short clip', () => {
+
+  it('never takes more than half of a short clip', () => {
     const clip = createTextClip(0, 30)
     clip.duration = 10
-    applyAnimationPreset(clip, 'in', 'fade', 100, canvas)
-    expect(clip.transform.opacity.keyframes!.map((k) => k.frame)).toEqual([0, 5])
+    setClipAnimation(clip, 'in', 'fade', 100)
+    const project = projectWith(clip)
+    expect(layer(project, 5).transform.opacity).toBe(1)
+    expect(layer(project, 2).transform.opacity).toBeGreaterThan(0)
   })
 })

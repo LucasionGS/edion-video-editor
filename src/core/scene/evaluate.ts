@@ -1,4 +1,5 @@
 import { evaluate } from '../keyframes/animatable'
+import { animationAt } from '../keyframes/presets'
 import type {
   AdjustmentClip,
   AudibleClip,
@@ -116,8 +117,12 @@ function resolveEffects(effects: Effect[], localFrame: number): ResolvedEffect[]
 function resolveLayer(project: Project, clip: VisualClip, frame: number): Layer {
   const localFrame = frame - clip.start
   const { position, scale, rotation, opacity, anchor } = clip.transform
-  const [x, y] = evaluate(position, localFrame)
-  const [scaleX, scaleY] = evaluate(scale, localFrame)
+  const animated = animationAt(clip, localFrame, project.settings)
+  const [x, y] = evaluate(position, localFrame).map((v, i) => v + (i ? animated.dy : animated.dx)) as [
+    number,
+    number
+  ]
+  const [scaleX, scaleY] = evaluate(scale, localFrame).map((v) => v * animated.scale) as [number, number]
   const layer: Layer = {
     kind: 'layer',
     clip,
@@ -128,7 +133,7 @@ function resolveLayer(project: Project, clip: VisualClip, frame: number): Layer 
       scaleX,
       scaleY,
       rotation: evaluate(rotation, localFrame),
-      opacity: Math.max(0, Math.min(1, evaluate(opacity, localFrame))),
+      opacity: Math.max(0, Math.min(1, evaluate(opacity, localFrame) * animated.opacity)),
       anchorX: anchor[0],
       anchorY: anchor[1]
     },

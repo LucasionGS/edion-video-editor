@@ -84,10 +84,17 @@ const clipBase = {
   /** Switched off: stays on the timeline but is neither seen nor heard. */
   disabled: z.boolean().optional()
 }
+const animationSpec = z.object({
+  preset: z.enum(['fade', 'slideUp', 'slideDown', 'slideLeft', 'slideRight', 'zoom', 'pop']),
+  /** Length in frames (at most half the clip is used). */
+  frames: frames.min(1)
+})
 const visual = {
   transform: transformSchema,
   blendMode: blendModeSchema,
-  effects: z.array(effectSchema)
+  effects: z.array(effectSchema),
+  /** Entrance and exit, applied from the clip's edges on top of its transform (see keyframes/presets). */
+  animation: z.object({ in: animationSpec.optional(), out: animationSpec.optional() }).optional()
 }
 const timed = {
   mediaId: id,
