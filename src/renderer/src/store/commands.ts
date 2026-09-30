@@ -1,6 +1,7 @@
 import {
   applyGain,
   clipAtFrame,
+  cloneClip,
   closeGap,
   DEFAULT_TRANSITION_SECONDS,
   deleteClips,
@@ -8,8 +9,10 @@ import {
   findMedia,
   isAudibleClip,
   normalizationGain,
+  relinkCopies,
   insertClipAuto,
   insertFrameHold,
+  insertEdit,
   linkClips,
   pasteClips,
   removeTransition,
@@ -113,6 +116,19 @@ export function paste(): void {
   if (clipboard.length === 0) return
   let ids: Id[] = []
   edit('Paste', (draft) => void (ids = pasteClips(draft, clipboard, playhead)))
+  select(ids)
+}
+
+/** Pastes at the playhead as an insert: everything after it moves later on all unlocked tracks. */
+export function pasteInsert(): void {
+  const { clipboard, playhead } = state()
+  if (clipboard.length === 0) return
+  let ids: Id[] = []
+  edit('Paste insert', (draft) => {
+    const copies = clipboard.map(({ clip, trackId }) => ({ clip: cloneClip(clip), trackId }))
+    relinkCopies(copies.map((c) => c.clip))
+    ids = insertEdit(draft, copies, playhead)
+  })
   select(ids)
 }
 

@@ -13,7 +13,10 @@ import {
   findClip,
   findMedia,
   linkedPartners,
-  swapMedia
+  swapMedia,
+  insertEdit,
+  overwriteClip,
+  trackKindFor
 } from '@core/index'
 import type { Id, MediaAsset, Project } from '@core/index'
 import type { DeriveKind, ImportedMedia } from '@shared/ipc'
@@ -175,12 +178,32 @@ export async function importMediaDialog(): Promise<void> {
   await importMedia(await window.edion.dialog.openMedia())
 }
 
-/** Appends an asset at `frame` (default: the playhead). */
-export function addAssetToTimeline(asset: MediaAsset, frame = get().playhead, trackId?: Id): void {
+/**
+ * How a new clip goes onto the timeline: into free space (a new track if needed), as an insert that
+ * pushes everything after it later, or overwriting whatever is on the target track.
+ */
+export type PlaceMode = 'auto' | 'insert' | 'overwrite'
+
+/** Puts an asset on the timeline at `frame` (default: the playhead). */
+export function addAssetToTimeline(
+  asset: MediaAsset,
+  frame = get().playhead,
+  trackId?: Id,
+  mode: PlaceMode = 'auto'
+): void {
   let clipId: Id | null = null
-  edit('Add to timeline', (draft) => {
+  const label =
+    mode === 'insert' ? 'Insert clip' : mode === 'overwrite' ? 'Overwrite clip' : 'Add to timeline'
+  edit(label, (draft) => {
     const clip = clipFromMedia(asset, frame, draft.settings.fps)
-    insertClipAuto(draft, clip, trackId)
+    const kind = trackKindFor(clip.type)
+    const target =
+      draft.tracks.find((t) => t.id === trackId && t.kind === kind && !t.locked) ??
+      // Overwrites land on the lowest track of the right kind, where new clips go too.
+      [...draft.tracks].reverse().find((t) => t.kind === kind && !t.locked)
+    if (mode === 'insert') insertEdit(draft, [{ clip, trackId: target?.id }], frame)
+    else if (mode === 'overwrite' && target) overwriteClip(draft, target.id, clip)
+    else insertClipAuto(draft, clip, trackId)
     clipId = clip.id
   })
   if (clipId) select([clipId])

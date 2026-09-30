@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  BetweenHorizontalStart,
   Check,
   Copy,
   Ellipsis,
@@ -189,6 +190,17 @@ function MediaCard({ asset, missing, uses }: { asset: MediaAsset; missing: boole
         icon: <Plus size={13} />,
         disabled: missing,
         onSelect: () => addAssetToTimeline(asset)
+      },
+      {
+        label: 'Insert at playhead',
+        icon: <BetweenHorizontalStart size={13} />,
+        disabled: missing,
+        onSelect: () => addAssetToTimeline(asset, undefined, undefined, 'insert')
+      },
+      {
+        label: 'Overwrite at playhead',
+        disabled: missing,
+        onSelect: () => addAssetToTimeline(asset, undefined, undefined, 'overwrite')
       },
       {
         label: 'Add at end of timeline',

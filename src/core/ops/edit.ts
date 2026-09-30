@@ -453,3 +453,58 @@ export function removeTransition(project: Project, transitionId: Id): void {
   for (const track of project.tracks)
     track.transitions = track.transitions.filter((t) => t.id !== transitionId)
 }
+
+// ── Insert / overwrite edits ──────────────────────────────────────────────────────────────────────
+
+/** Empties [from, to) on a track: clips across the edges are cut there and whatever lies inside goes. */
+export function clearTrackRange(project: Project, trackId: Id, from: number, to: number): void {
+  const track = findTrack(project, trackId)
+  if (!track || track.locked || to <= from) return
+  for (const edge of [from, to]) {
+    const across = track.clips.find((c) => c.start < edge && clipEnd(c) > edge)
+    if (across) splitOne(project, across.id, edge)
+  }
+  track.clips = track.clips.filter((c) => c.start >= to || clipEnd(c) <= from)
+  normalizeTrack(track)
+  pruneLinks(project)
+}
+
+/** Puts a clip on a track at its `start`, replacing whatever is there. */
+export function overwriteClip(project: Project, trackId: Id, clip: Clip): boolean {
+  const track = findTrack(project, trackId)
+  if (!track || track.locked || track.kind !== trackKindFor(clip.type)) return false
+  clearTrackRange(project, trackId, clip.start, clip.start + clip.duration)
+  return insertClip(project, trackId, clip)
+}
+
+/**
+ * Opens a gap of `frames` at `frame` on every unlocked track, cutting clips that span it, so everything
+ * after it moves later and stays in sync. Locked tracks are left alone.
+ */
+export function openGap(project: Project, frame: number, frames: number): void {
+  if (frames <= 0) return
+  for (const track of project.tracks) {
+    if (track.locked) continue
+    const across = track.clips.find((c) => c.start < frame && clipEnd(c) > frame)
+    if (across) splitOne(project, across.id, frame)
+    for (const clip of track.clips) if (clip.start >= frame) clip.start += frames
+    normalizeTrack(track)
+  }
+}
+
+/** Inserts clips at `frame`, pushing everything after it later on all unlocked tracks. */
+export function insertEdit(
+  project: Project,
+  clips: ReadonlyArray<{ clip: Clip; trackId?: Id }>,
+  frame: number
+): Id[] {
+  if (clips.length === 0) return []
+  const origin = Math.min(...clips.map((c) => c.clip.start))
+  const length = Math.max(...clips.map((c) => c.clip.start - origin + c.clip.duration))
+  openGap(project, frame, length)
+  return clips.map(({ clip, trackId }) => {
+    clip.start = frame + (clip.start - origin)
+    insertClipAuto(project, clip, trackId)
+    return clip.id
+  })
+}

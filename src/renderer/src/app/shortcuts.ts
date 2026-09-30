@@ -10,6 +10,7 @@ import {
   deleteSelection,
   duplicateSelection,
   paste,
+  pasteInsert,
   rippleTrimToPlayhead,
   selectAll,
   setRangeEdge,
@@ -122,6 +123,13 @@ export const COMMANDS: Command[] = [
   { id: 'copy', label: 'Copy', group: 'Editing', keys: ['ctrl+c'], run: copySelection },
   { id: 'cut', label: 'Cut', group: 'Editing', keys: ['ctrl+x'], run: cutSelection },
   { id: 'paste', label: 'Paste at playhead', group: 'Editing', keys: ['ctrl+v'], run: paste },
+  {
+    id: 'pasteInsert',
+    label: 'Paste insert (push later clips)',
+    group: 'Editing',
+    keys: ['ctrl+shift+v'],
+    run: pasteInsert
+  },
   { id: 'duplicate', label: 'Duplicate', group: 'Editing', keys: ['ctrl+d'], run: duplicateSelection },
   { id: 'selectAll', label: 'Select all', group: 'Editing', keys: ['ctrl+a'], run: selectAll },
   { id: 'link', label: 'Link / unlink clips', group: 'Editing', keys: ['ctrl+l'], run: toggleLink },

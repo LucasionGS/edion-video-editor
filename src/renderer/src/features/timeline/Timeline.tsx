@@ -116,9 +116,11 @@ export function Timeline() {
     const assets = assetId
       ? useEditor.getState().project.media.filter((m) => m.id === assetId)
       : await importMedia([...e.dataTransfer.files].map((f) => window.edion.media.pathForFile(f)))
+    // Ctrl/⌘: insert (push later clips along); Alt: overwrite what is there.
+    const mode = e.ctrlKey || e.metaKey ? 'insert' : e.altKey ? 'overwrite' : 'auto'
     let at = frame
     for (const asset of assets) {
-      addAssetToTimeline(asset, at, lane)
+      addAssetToTimeline(asset, at, lane, mode)
       at += Math.max(1, Math.round((asset.duration || 5) * useEditor.getState().project.settings.fps))
     }
   }
