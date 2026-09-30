@@ -70,7 +70,9 @@ const api: EdionApi = {
     cacheSize: () => ipcRenderer.invoke(LIBRARY_IPC.cacheSize),
     clearCache: () => ipcRenderer.invoke(LIBRARY_IPC.clearCache),
     loudness: (path, start, duration) => ipcRenderer.invoke(LIBRARY_IPC.loudness, path, start, duration),
-    collect: (paths, folder) => ipcRenderer.invoke(LIBRARY_IPC.collect, paths, folder)
+    collect: (paths, folder) => ipcRenderer.invoke(LIBRARY_IPC.collect, paths, folder),
+    silences: (path, start, duration, thresholdDb, minSeconds) =>
+      ipcRenderer.invoke(LIBRARY_IPC.silences, path, start, duration, thresholdDb, minSeconds)
   },
   settings: {
     get: () => ipcRenderer.invoke(SETTINGS_IPC.get),

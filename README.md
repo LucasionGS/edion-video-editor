@@ -11,7 +11,7 @@ A sleek, cross-platform video editor built on Electron, WebGL and FFmpeg.
 - **Effects and transitions** — colour adjust, levels, blur, sharpen, glow, drop shadow, vignette, sepia, invert, pixelate, chromatic aberration, film grain, chroma key, luma key, .cube LUTs, rectangle / ellipse masks (feathered, keyframeable); adjustment layers that apply effects to everything below them; blend modes; 13 transitions.
 - **Viewer** — video scopes (luma waveform, vectorscope, RGB histogram), safe-area and rule-of-thirds guides, preview quality.
 - **Time** — per-clip speed, reverse playback (picture and sound), frame holds inserted at the playhead.
-- **Audio** — per-clip volume with keyframes, fades, pan, equalizer / high-pass / low-pass / compressor, loudness normalization to -14 LUFS (EBU R128), a mixer with per-track volume and pan, detach audio, mute / solo, level meter, voiceover recording.
+- **Audio** — per-clip volume with keyframes, fades, pan, equalizer / high-pass / low-pass / compressor, loudness normalization to -14 LUFS (EBU R128), remove silence (automatic jump cuts), a mixer with per-track volume and pan, detach audio, mute / solo, level meter, voiceover recording.
 - **Projects** — single `.edion` JSON file with linked media, atomic saves with a `.bak`, autosave and crash recovery, recent projects.
 - **Export** — MP4 (H.264 / H.265 / AV1), WebM (VP9 + Opus), MOV (ProRes 422), animated GIF, audio only (MP3, WAV, FLAC) and PNG stills of the frame at the playhead; resolution and quality presets, in/out range, background queue with progress / ETA / cancel, hardware encoding (NVENC, VAAPI, Quick Sync, AMF, VideoToolbox) with automatic software fallback.
 

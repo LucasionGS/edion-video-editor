@@ -2,6 +2,7 @@ import {
   AlignCenterHorizontal,
   AlignCenterVertical,
   AudioLines,
+  AudioWaveform,
   BetweenHorizontalStart,
   ClipboardPaste,
   Copy,
@@ -54,6 +55,7 @@ import {
   splitAtPlayhead,
   toggleLink
 } from './commands'
+import { openDialog } from './dialogs'
 import { edit, select, useEditor } from './editor'
 
 const shortcut = (id: string): string | undefined => {
@@ -266,6 +268,15 @@ export function clipMenuItems(): MenuItem[] {
       label: 'Normalize loudness',
       icon: <Gauge size={13} />,
       onSelect: () => void normalizeLoudness(audible.map((c) => c.id))
+    })
+  }
+  const only = clips.length === 1 ? clips[0]! : undefined
+  const silenceTarget = only && 'sourceIn' in only && !(only.type === 'video' && only.hold) ? only : undefined
+  if (silenceTarget) {
+    items.push({
+      label: 'Remove silence…',
+      icon: <AudioWaveform size={13} />,
+      onSelect: () => openDialog({ kind: 'removeSilence', clipId: silenceTarget.id })
     })
   }
   if (holdTarget) {

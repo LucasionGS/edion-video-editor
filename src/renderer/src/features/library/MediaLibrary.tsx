@@ -100,7 +100,7 @@ export function MediaLibrary() {
       }}
     >
       <div className="flex shrink-0 items-center justify-between px-3 py-2">
-        <span className="text-2xs text-faint">
+        <span className="truncate text-2xs whitespace-nowrap text-faint">
           {media.length > 0 ? `${media.length} item${media.length > 1 ? 's' : ''}` : ''}
         </span>
         <span className="flex gap-1.5">

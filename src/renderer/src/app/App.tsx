@@ -4,6 +4,8 @@ import { ExportDialog } from '@/features/export/ExportDialog'
 import { Inspector } from '@/features/inspector/Inspector'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 import { Welcome } from '@/features/welcome/Welcome'
+import { RemoveSilenceDialog } from '@/features/tools/RemoveSilenceDialog'
+import { useDialogs } from '@/store/dialogs'
 import { Library } from '@/features/library/Library'
 import { Timeline } from '@/features/timeline/Timeline'
 import { Viewer } from '@/features/viewer/Viewer'
@@ -61,6 +63,7 @@ export function App() {
       </Group>
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      <DialogHost />
       <Welcome />
       <ContextMenuHost />
       <Toasts />
@@ -103,4 +106,10 @@ function useCloseGuard(): void {
       }),
     []
   )
+}
+
+function DialogHost() {
+  const open = useDialogs((s) => s.open)
+  if (open?.kind === 'removeSilence') return <RemoveSilenceDialog clipId={open.clipId} />
+  return null
 }

@@ -292,6 +292,14 @@ export interface EdionMediaLibraryApi {
    * path for each file copied. Files already in the folder are left where they are.
    */
   collect(paths: string[], folder: string): Promise<Record<string, string>>
+  /** Pauses quieter than `thresholdDb` lasting at least `minSeconds`, as [start, end] source seconds. */
+  silences(
+    path: string,
+    start: number,
+    duration: number,
+    thresholdDb: number,
+    minSeconds: number
+  ): Promise<Array<[number, number]>>
   /** EBU R128 loudness of `duration` seconds from `start`, or null when it cannot be measured. */
   loudness(
     path: string,
@@ -332,7 +340,8 @@ export const LIBRARY_IPC = {
   cacheSize: 'library:cacheSize',
   clearCache: 'library:clearCache',
   loudness: 'library:loudness',
-  collect: 'library:collect'
+  collect: 'library:collect',
+  silences: 'library:silences'
 } as const
 
 export const SETTINGS_IPC = { get: 'settings:get', update: 'settings:update' } as const

@@ -14,6 +14,7 @@ import {
   type ProxyMode
 } from '@shared/ipc'
 import { parseEbur128, type Loudness } from '@core/audio/loudness'
+import { parseSilences } from '@core/audio/silence'
 import { backgroundJobs, runFfmpeg } from './ffmpeg/jobs'
 import { resolveFfmpeg } from './ffmpeg/paths'
 import { probe } from './ffmpeg/probe'
@@ -304,14 +305,19 @@ export function registerLibraryIpc(): void {
     for (const jobs of [filmstripJobs, peakJobs, proxyJobs]) jobs.clear()
   })
   ipcMain.handle(LIBRARY_IPC.peaks, (_e, path: string) => once(peakJobs, path, () => buildPeaks(path)))
+  ipcMain.handle(
+    LIBRARY_IPC.silences,
+    (_e, path: string, start: number, duration: number, thresholdDb: number, minSeconds: number) =>
+      backgroundJobs.run(() => detectSilences(path, start, duration, thresholdDb, minSeconds))
+  )
   ipcMain.handle(LIBRARY_IPC.collect, (_e, paths: string[], folder: string) => collectFiles(paths, folder))
   ipcMain.handle(LIBRARY_IPC.loudness, (_e, path: string, start: number, duration: number) =>
     backgroundJobs.run(() => measureLoudness(path, start, duration))
   )
 }
 
-/** Runs FFmpeg's EBU R128 meter over part of a file. Its report goes to the log, hence the log level. */
-async function measureLoudness(path: string, start: number, duration: number): Promise<Loudness | null> {
+/** Runs FFmpeg over `duration` seconds of a file's audio with an analysis filter and returns its log. */
+async function analyzeAudio(path: string, start: number, duration: number, filter: string): Promise<string> {
   const { ffmpegPath } = await resolveFfmpeg()
   const args = [
     '-hide_banner',
@@ -322,26 +328,35 @@ async function measureLoudness(path: string, start: number, duration: number): P
     '-ss',
     String(Math.max(0, start))
   ]
-  args.push(
-    '-t',
-    String(Math.max(0.05, duration)),
-    '-i',
-    path,
-    '-vn',
-    '-af',
-    'ebur128=peak=true',
-    '-f',
-    'null',
-    '-'
-  )
-  const log = await new Promise<string>((resolvePromise) => {
+  args.push('-t', String(Math.max(0.05, duration)), '-i', path, '-vn', '-af', filter, '-f', 'null', '-')
+  return new Promise<string>((resolvePromise) => {
     const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] })
     let output = ''
-    child.stderr.on('data', (d: Buffer) => (output = (output + d.toString()).slice(-8000)))
+    // Keep the whole log: silencedetect reports every pause, not just a summary.
+    child.stderr.on('data', (d: Buffer) => (output += d.toString()))
     child.once('error', () => resolvePromise(''))
     child.once('close', () => resolvePromise(output))
   })
-  return parseEbur128(log)
+}
+
+async function measureLoudness(path: string, start: number, duration: number): Promise<Loudness | null> {
+  return parseEbur128(await analyzeAudio(path, start, duration, 'ebur128=peak=true'))
+}
+
+async function detectSilences(
+  path: string,
+  start: number,
+  duration: number,
+  thresholdDb: number,
+  minSeconds: number
+): Promise<Array<[number, number]>> {
+  const log = await analyzeAudio(
+    path,
+    start,
+    duration,
+    `silencedetect=noise=${thresholdDb}dB:d=${minSeconds}`
+  )
+  return parseSilences(log, start, duration)
 }
 
 async function collectFiles(paths: string[], folder: string): Promise<Record<string, string>> {
